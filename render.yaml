@@ -1,0 +1,78 @@
+# render.yaml — Render Infrastructure as Code
+# Deploy: Connect GitHub repo → Render auto-detects this file
+
+services:
+  # ---- Backend API ----
+  - type: web
+    name: printdrop-api
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      - key: DATABASE_URL
+        fromGroup: printdrop-secrets
+      - key: DIRECT_URL
+        fromGroup: printdrop-secrets
+      - key: JWT_SECRET
+        fromGroup: printdrop-secrets
+      - key: TELEGRAM_BOT_TOKEN
+        fromGroup: printdrop-secrets
+      - key: RAZORPAY_KEY_ID
+        fromGroup: printdrop-secrets
+      - key: RAZORPAY_KEY_SECRET
+        fromGroup: printdrop-secrets
+      - key: RAZORPAY_WEBHOOK_SECRET
+        fromGroup: printdrop-secrets
+      - key: R2_ACCOUNT_ID
+        fromGroup: printdrop-secrets
+      - key: R2_ACCESS_KEY_ID
+        fromGroup: printdrop-secrets
+      - key: R2_SECRET_ACCESS_KEY
+        fromGroup: printdrop-secrets
+      - key: R2_BUCKET_NAME
+        value: printdrop
+      - key: R2_PUBLIC_URL
+        fromGroup: printdrop-secrets
+      - key: STORAGE_DRIVER
+        value: r2
+      - key: FRONTEND_URL
+        value: https://printdrop-dashboard.onrender.com
+      - key: API_URL
+        value: https://printdrop-api.onrender.com
+      - key: LIBREOFFICE_URL
+        value: http://printdrop-libreoffice:3002
+    healthCheckPath: /health
+
+  # ---- Dashboard (Next.js) ----
+  - type: web
+    name: printdrop-dashboard
+    runtime: docker
+    dockerfilePath: dashboard/Dockerfile
+    dockerContext: .
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://printdrop-api.onrender.com
+
+  # ---- LibreOffice Converter ----
+  - type: web
+    name: printdrop-libreoffice
+    runtime: docker
+    dockerfilePath: libreoffice/Dockerfile
+    dockerContext: libreoffice
+    plan: starter
+    healthCheckPath: /health
+
+  # ---- Redis ----
+  - type: redis
+    name: printdrop-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
