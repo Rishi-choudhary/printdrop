@@ -46,6 +46,18 @@ services:
         value: https://printdrop-api.onrender.com
       - key: LIBREOFFICE_URL
         value: http://printdrop-libreoffice:3002
+      - key: TELEGRAM_BOT_USERNAME
+        fromGroup: printdrop-secrets
+      - key: MSG91_AUTH_KEY
+        fromGroup: printdrop-secrets
+      - key: MSG91_TEMPLATE_ID
+        fromGroup: printdrop-secrets
+      - key: ADMIN_PHONE
+        fromGroup: printdrop-secrets
+      - key: MAX_FILE_SIZE_MB
+        value: "50"
+      - key: ALLOWED_FILE_TYPES
+        value: pdf,jpg,jpeg,png,doc,docx,ppt,pptx
     healthCheckPath: /health
 
   # ---- Dashboard (Next.js) ----
@@ -60,6 +72,8 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         value: https://printdrop-api.onrender.com
+      - key: NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+        fromGroup: printdrop-secrets
 
   # ---- LibreOffice Converter ----
   - type: web
