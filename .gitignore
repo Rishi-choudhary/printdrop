@@ -6,6 +6,8 @@ node_modules/
 *.db-journal
 uploads/*
 !uploads/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
 .next/
 dist/
 .turbo/
