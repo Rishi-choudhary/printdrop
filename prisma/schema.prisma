@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  phone         String    @unique
+  name          String?
+  email         String?
+  role          String    @default("customer") // customer | shopkeeper | admin
+  credits       Float     @default(0)
+  referralCode  String?   @unique
+  referredBy    String?
+  telegramChatId String?  @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  shop          Shop?
+  jobs          Job[]
+  payments      Payment[]
+  conversations Conversation[]
+  referrals     Referral[]     @relation("referrer")
+  referredUsers Referral[]     @relation("referee")
+
+  @@index([phone])
+  @@index([telegramChatId])
+}
+
+model Shop {
+  id            String   @id @default(cuid())
+  name          String
+  address       String?
+  phone         String   @unique
+  latitude      Float?
+  longitude     Float?
+  ownerId       String   @unique
+  isActive      Boolean  @default(true)
+  agentKey      String?  @unique
+
+  // Rates per page
+  ratesBwSingle    Float @default(2)
+  ratesBwDouble    Float @default(1.5)
+  ratesColorSingle Float @default(5)
+  ratesColorDouble Float @default(4)
+  bindingCharge    Float @default(20)
+  spiralCharge     Float @default(30)
+
+  // Auto-print mode
+  autoPrint     Boolean @default(false)
+
+  // Operating hours
+  opensAt       String  @default("09:00")
+  closesAt      String  @default("21:00")
+  closedDays    String  @default("[]")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  owner         User     @relation(fields: [ownerId], references: [id])
+  jobs          Job[]
+  printers      ShopPrinter[]
+
+  @@index([isActive])
+  @@index([agentKey])
+}
+
+model Job {
+  id            String   @id @default(cuid())
+  token         Int
+  userId        String
+  shopId        String
+  fileUrl       String
+  fileKey       String?  // Storage key (R2 object key) for URL refresh
+  fileName      String
+  fileSize      Int
+  fileType      String
+  pageCount     Int      @default(1)
+
+  // Print preferences
+  color         Boolean  @default(false)
+  copies        Int      @default(1)
+  doubleSided   Boolean  @default(false)
+  paperSize     String   @default("A4")
+  pageRange     String?
+  binding       String?
+
+  // Printer assignment
+  printerId     String?
+  printerName   String?
+
+  // Pricing
+  pricePerPage  Float
+  totalPrice    Float
+  platformFee   Float
+  shopEarning   Float
+
+  // Status workflow: pending → payment_pending → queued → printing → ready → picked_up | cancelled
+  status        String   @default("pending")
+
+  // Timestamps
+  paidAt        DateTime?
+  printedAt     DateTime?
+  readyAt       DateTime?
+  pickedUpAt    DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Source
+  source        String   @default("whatsapp")
+
+  user          User        @relation(fields: [userId], references: [id])
+  shop          Shop        @relation(fields: [shopId], references: [id])
+  printer       ShopPrinter? @relation(fields: [printerId], references: [id])
+  payment       Payment?
+
+  @@index([userId])
+  @@index([shopId])
+  @@index([status])
+  @@index([shopId, status])
+  @@index([shopId, token])
+  @@index([createdAt])
+}
+
+model Payment {
+  id                  String   @id @default(cuid())
+  jobId               String   @unique
+  amount              Float
+  currency            String   @default("INR")
+  razorpayPaymentId   String?  @unique
+  razorpayOrderId     String?  @unique
+  razorpayPaymentLink String?
+  status              String   @default("pending")
+  refundId            String?
+  paidAt              DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  job                 Job      @relation(fields: [jobId], references: [id])
+  user                User?    @relation(fields: [userId], references: [id])
+  userId              String?
+
+  @@index([status])
+  @@index([jobId])
+}
+
+model Conversation {
+  id          String   @id @default(cuid())
+  userId      String
+  platform    String
+  chatId      String
+  state       String   @default("idle")
+  context     String   @default("{}")
+  fileUrl     String?
+  fileName    String?
+  pageCount   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@unique([platform, chatId])
+  @@index([userId])
+}
+
+model Referral {
+  id          String   @id @default(cuid())
+  referrerId  String
+  refereeId   String
+  status      String   @default("pending")
+  rewardGiven Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  referrer    User     @relation("referrer", fields: [referrerId], references: [id])
+  referee     User     @relation("referee", fields: [refereeId], references: [id])
+
+  @@index([referrerId])
+  @@index([refereeId])
+}
+
+model OTP {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone, code])
+  @@index([expiresAt])
+}
+
+model ShopPrinter {
+  id             String    @id @default(cuid())
+  shopId         String
+  name           String
+  systemName     String
+  isDefault      Boolean   @default(false)
+  supportsColor  Boolean   @default(true)
+  supportsDuplex Boolean   @default(false)
+  supportsA3     Boolean   @default(false)
+  isOnline       Boolean   @default(false)
+  lastSeen       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  shop  Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  jobs  Job[]
+
+  @@index([shopId])
+}

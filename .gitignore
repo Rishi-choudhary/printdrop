@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+uploads/*
+!uploads/.gitkeep
+.next/
+dist/
+.turbo/
+*.log
+.DS_Store
+prisma/migrations/dev/

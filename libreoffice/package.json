@@ -1,0 +1,9 @@
+{
+  "name": "printdrop-libreoffice",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "express": "^4.21.0",
+    "multer": "^1.4.5-lts.1"
+  }
+}

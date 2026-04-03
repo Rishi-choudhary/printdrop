@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Open+Sans:wght@400;500;600&display=swap');
+
+body {
+  font-family: 'Open Sans', system-ui, -apple-system, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Poppins', system-ui, sans-serif;
+}
+
+/* Pulse animation for ready status */
+@keyframes pulse-green {
+  0%, 100% { background-color: rgb(220 252 231); }
+  50% { background-color: rgb(187 247 208); }
+}
+.animate-pulse-green {
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+/* File preview iframe */
+.file-preview-frame {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+}

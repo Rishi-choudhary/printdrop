@@ -1,0 +1,14 @@
+# Railway — PrintDrop deployment config
+# This file configures the backend service (root service).
+# Add dashboard + libreoffice as separate services in the Railway dashboard.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+dockerContext = "."
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

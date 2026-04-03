@@ -1,0 +1,30 @@
+{
+  "name": "printdrop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart print shop automation — WhatsApp & Telegram bot + Dashboard",
+  "workspaces": [
+    "backend",
+    "dashboard",
+    "print-agent"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w dashboard\"",
+    "dev:backend": "npm run dev -w backend",
+    "dev:dashboard": "npm run dev -w dashboard",
+    "dev:agent": "npm run dev -w print-agent",
+    "db:push": "npx prisma db push",
+    "db:generate": "npx prisma generate",
+    "db:studio": "npx prisma studio",
+    "db:seed": "node prisma/seed.js",
+    "db:setup": "node scripts/setup-supabase.js",
+    "build": "npm run build -w dashboard"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "prisma": "^5.20.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0"
+  }
+}
