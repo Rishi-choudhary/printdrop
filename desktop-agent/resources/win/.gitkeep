@@ -1,0 +1,4 @@
+Place SumatraPDF.exe here for bundling with the Windows installer.
+Download from: https://www.sumatrapdfreader.org/download-free-pdf-viewer
+
+The file is excluded from git (.gitignore) — download it as part of your CI/CD pipeline.

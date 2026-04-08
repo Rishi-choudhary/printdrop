@@ -6,16 +6,22 @@ const messages = require('../bot/messages');
 const config = require('../config');
 
 async function webhookRoutes(fastify) {
-  // POST /webhooks/whatsapp — WhatsApp incoming messages
+  // POST /webhooks/whatsapp — WhatsApp incoming messages (Gupshup / Meta Cloud API)
+  // Gupshup does not send HMAC signatures; verification relies on a secret URL token
+  // or IP whitelisting configured in the Gupshup dashboard.
   fastify.post('/whatsapp', async (request, reply) => {
-    const signature = request.headers['x-hub-signature-256'] ||
-      request.headers['x-wati-signature'] ||
-      request.headers['x-gupshup-signature'] || '';
+    // Accept token from any of the common header names
+    const signature =
+      request.headers['x-gupshup-token'] ||
+      request.headers['x-hub-signature-256'] ||
+      request.headers['x-hub-signature'] ||
+      request.headers['x-wati-signature'] || '';
 
     if (!verifyWhatsApp(request.body, signature)) {
       return reply.code(401).send({ error: 'Invalid signature' });
     }
 
+    // Process asynchronously so Gupshup gets a fast 200 OK
     handleWhatsAppWebhook(request.body).catch((err) => {
       console.error('WhatsApp webhook processing error:', err);
     });

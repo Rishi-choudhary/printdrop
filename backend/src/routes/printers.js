@@ -67,7 +67,7 @@ async function printerRoutes(fastify) {
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
     });
 
-    return { shopId: shop.id, printers: routing };
+    return { shopId: shop.id, shopName: shop.name, printers: routing };
   });
 
   // ─── GET /printers/routing/:shopId — get printer routing for agent ────────

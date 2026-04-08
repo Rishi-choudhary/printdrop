@@ -6,20 +6,14 @@
 function welcomeMessage() {
   return {
     text:
-      `*PrintDrop* \n\n` +
+      `*PrintDrop*\n\n` +
       `Send me a PDF, image, or document and I'll get it printed at a shop near you.\n\n` +
       `*How it works:*\n` +
       `1. Send a file\n` +
       `2. Choose print settings\n` +
       `3. Pay online\n` +
       `4. Pick up with your token\n\n` +
-      `You can also place orders on our website: random\\_link.com\n\n` +
-      `*Commands:*\n` +
-      `/start - Start over\n` +
-      `/help - How to use\n` +
-      `/status - Check print status\n` +
-      `/history - Recent orders\n` +
-      `/cancel - Cancel current order`,
+      `Type *help* to see all commands.`,
   };
 }
 
@@ -230,7 +224,7 @@ function errorMessage(error) {
     invalid_copies: 'Please enter a number between 1 and 100.',
     payment_failed: 'Payment failed. Please try again or contact support.',
     shop_closed: 'This shop is currently closed. Please choose another shop or try later.',
-    server_error: 'Something went wrong. Please try again or type /start to restart.',
+    server_error: 'Something went wrong. Please try again or type *start* to restart.',
     no_active_order: 'You don\'t have an active order. Send a file to start a new one.',
     expired_session: 'Your session has expired. Please send the file again to start over.',
     converting: 'Converting your document to PDF... This may take a moment.',
@@ -248,16 +242,16 @@ function helpMessage() {
       `1. Send a PDF, image, or document\n` +
       `2. Choose pages, color, copies, paper, and sides\n` +
       `3. Confirm the order summary\n` +
-      `4. Pay online via the payment link\n` +
-      `5. Pick up with your token number\n\n` +
+      `4. Pay via the link sent to you\n` +
+      `5. Pick up at the shop with your token\n\n` +
       `*Supported files:* PDF, JPG, PNG, DOCX, PPTX\n` +
       `*Max size:* 50 MB\n\n` +
-      `*Commands:*\n` +
-      `/start - Start over\n` +
-      `/help - This message\n` +
-      `/status - Check print status\n` +
-      `/history - Recent orders\n` +
-      `/cancel - Cancel current order`,
+      `*Commands* (type any of these):\n` +
+      `*start* - Start a new order\n` +
+      `*status* - Check print status\n` +
+      `*history* - Recent orders\n` +
+      `*cancel* - Cancel current order\n` +
+      `*help* - This message`,
   };
 }
 
@@ -280,11 +274,14 @@ function processingMessage() {
 }
 
 /**
- * Escape characters that break Telegram Markdown.
+ * Sanitize user-provided text for WhatsApp messages.
+ * WhatsApp uses *bold*, _italic_, ~strike~, `mono` — only strip raw * that
+ * could accidentally bold arbitrary content. Underscores are intentional.
  */
 function escapeText(text) {
   if (!text) return '';
-  return text.replace(/([_`\[\]])/g, '\\$1');
+  // Replace lone asterisks that aren't part of intentional bold pairs
+  return text.replace(/\*/g, '');
 }
 
 module.exports = {

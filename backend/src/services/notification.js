@@ -31,52 +31,115 @@ async function sendTelegramMessage(chatId, text, buttons) {
   return bot.sendMessage(chatId, text, opts);
 }
 
-async function sendWhatsAppMessage(phone, text, buttons) {
-  const apiUrl = config.whatsapp.apiUrl;
-  const apiKey = config.whatsapp.apiKey;
+/**
+ * Build a Gupshup quick_reply message (max 3 buttons, max 20 chars per title).
+ */
+function buildQuickReply(text, buttons) {
+  return {
+    type: 'quick_reply',
+    content: { type: 'text', header: '', text, caption: '' },
+    options: buttons.map((btn) => ({
+      type: 'text',
+      title: btn.text.substring(0, 20),
+      description: '',
+      postbackText: btn.callback_data,
+    })),
+  };
+}
 
-  if (!apiUrl || !apiKey) {
-    console.warn('WhatsApp API not configured, cannot send message');
+/**
+ * Build a Gupshup list message (max 10 items) for menus with > 3 options.
+ */
+function buildListMessage(text, buttons) {
+  return {
+    type: 'list',
+    title: 'Options',
+    body: text,
+    msgid: `list_${Date.now()}`,
+    globalButtons: [{ type: 'text', title: 'View options' }],
+    items: [
+      {
+        title: 'Choose one',
+        subtitle: '',
+        options: buttons.slice(0, 10).map((btn) => ({
+          type: 'text',
+          title: btn.text.substring(0, 24),
+          description: '',
+          postbackText: btn.callback_data,
+        })),
+      },
+    ],
+  };
+}
+
+/**
+ * Send a WhatsApp message via Gupshup API.
+ *
+ * Button rules (WhatsApp platform limits):
+ *   - URL buttons  → inlined into text, not interactive
+ *   - ≤ 3 callback → quick_reply
+ *   - > 3 callback → list message
+ */
+async function sendWhatsAppMessage(phone, text, buttons) {
+  const { apiUrl, apiKey, sourceNumber, appName } = config.whatsapp;
+
+  if (!apiKey || !sourceNumber) {
+    console.warn('Gupshup not configured (WHATSAPP_API_KEY / GUPSHUP_SOURCE_NUMBER missing)');
     return;
   }
 
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: phone,
-    type: 'text',
-    text: { body: text },
-  };
+  // Normalize phone: strip leading +
+  const dest = String(phone).replace(/^\+/, '');
 
-  // If buttons, send as interactive message
-  if (buttons && buttons.length > 0) {
-    payload.type = 'interactive';
-    payload.interactive = {
-      type: 'button',
-      body: { text },
-      action: {
-        buttons: buttons.slice(0, 3).map((btn, i) => ({
-          type: 'reply',
-          reply: { id: btn.callback_data, title: btn.text.substring(0, 20) },
-        })),
-      },
-    };
-    delete payload.text;
+  let message;
+
+  if (!buttons || buttons.length === 0) {
+    message = { type: 'text', text };
+  } else {
+    const urlBtns = buttons.filter((b) => b.url);
+    const cbBtns = buttons.filter((b) => b.callback_data);
+
+    // Inline URL buttons into the message body
+    let body = text;
+    if (urlBtns.length > 0) {
+      body += '\n\n' + urlBtns.map((b) => `*${b.text}:* ${b.url}`).join('\n');
+    }
+
+    if (cbBtns.length === 0) {
+      message = { type: 'text', text: body };
+    } else if (cbBtns.length <= 3) {
+      message = buildQuickReply(body, cbBtns);
+    } else {
+      message = buildListMessage(body, cbBtns);
+    }
   }
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(payload),
+  const params = new URLSearchParams({
+    channel: 'whatsapp',
+    source: sourceNumber,
+    destination: dest,
+    'src.name': appName,
+    message: JSON.stringify(message),
   });
 
-  if (!response.ok) {
-    console.error('WhatsApp API error:', await response.text());
-  }
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        apikey: apiKey,
+      },
+      body: params.toString(),
+    });
 
-  return response;
+    if (!response.ok) {
+      console.error('Gupshup API error:', response.status, await response.text());
+    }
+
+    return response;
+  } catch (err) {
+    console.error('Gupshup send error:', err.message);
+  }
 }
 
 async function notifyUser(userId, messageObj) {

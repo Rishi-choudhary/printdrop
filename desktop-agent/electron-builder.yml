@@ -1,0 +1,63 @@
+appId: com.printdrop.agent
+productName: PrintDrop Agent
+copyright: "Copyright © 2026 PrintDrop"
+
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - main.js
+  - preload.js
+  - src/**/*
+  - renderer/**/*
+  - assets/**/*
+  - node_modules/**/*
+  - "!node_modules/**/{test,tests,__tests__,spec}/**"
+  - "!node_modules/**/*.map"
+  - "!node_modules/**/README*"
+
+mac:
+  category: public.app-category.utilities
+  icon: assets/icons/icon.icns
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  icon: assets/icons/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  extraResources:
+    - from: resources/win/SumatraPDF.exe
+      to: SumatraPDF.exe
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icons/icon.ico
+  uninstallerIcon: assets/icons/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PrintDrop Agent
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+
+linux:
+  icon: assets/icons/icon.png
+  category: Utility
+  target:
+    - target: AppImage
+      arch: [x64]

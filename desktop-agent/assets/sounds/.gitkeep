@@ -1,0 +1,6 @@
+Place three WAV files here (< 1 second each):
+  new-job.wav   — played when a new job is detected
+  job-done.wav  — played when a job is ready for pickup
+  job-error.wav — played when a print job fails
+
+Free sources: freesound.org, mixkit.co

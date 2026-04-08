@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>PrintDrop Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<div class="header">
+  <div class="status-dot" id="statusDot"></div>
+  <div class="shop-name" id="shopName">PrintDrop Agent</div>
+  <div class="last-poll" id="lastPoll">—</div>
+  <button class="close-btn" onclick="window.printdrop.openSetup()">⚙</button>
+  <button class="close-btn" onclick="closeWindow()">×</button>
+</div>
+
+<!-- ── Stats ───────────────────────────────────────────────────────────────── -->
+<div class="stats">
+  <div class="stat-box">
+    <div class="num" id="statPrinted">0</div>
+    <div class="lbl">Printed Today</div>
+  </div>
+  <div class="stat-box">
+    <div class="num" id="statQueue">0</div>
+    <div class="lbl">In Queue</div>
+  </div>
+  <div class="stat-box">
+    <div class="num" id="statFailed">0</div>
+    <div class="lbl">Failed</div>
+  </div>
+</div>
+
+<!-- ── Recent Jobs ──────────────────────────────────────────────────────────── -->
+<div class="section-title">Recent Jobs</div>
+<div class="job-list" id="jobList">
+  <div class="empty-msg">No jobs yet. Waiting for print jobs…</div>
+</div>
+
+<!-- ── Printers ──────────────────────────────────────────────────────────────── -->
+<div class="printers" id="printerSection"></div>
+
+<!-- ── Footer ──────────────────────────────────────────────────────────────── -->
+<div class="footer">
+  <button class="footer-btn" onclick="window.printdrop.openLog()">📄 Open Log</button>
+  <button class="footer-btn" onclick="window.printdrop.openSetup()">⚙ Settings</button>
+  <button class="footer-btn danger" onclick="window.printdrop.quit()">Quit</button>
+</div>
+
+<script src="dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f8f9fa;
+  color: #1a1a2e;
+  font-size: 14px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 20px 28px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.logo span { color: #4f8ef7; }
+
+.step-indicator {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.content {
+  flex: 1;
+  padding: 28px 28px 0;
+  overflow-y: auto;
+}
+
+h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.subtitle { color: #6b7280; font-size: 13px; margin-bottom: 24px; line-height: 1.5; }
+
+.form-group { margin-bottom: 18px; }
+label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+input, select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus { border-color: #4f8ef7; }
+
+.banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+.banner.error   { background: #fef2f2; border: 1px solid #fca5a5; color: #dc2626; display: block; }
+.banner.success { background: #f0fdf4; border: 1px solid #86efac; color: #16a34a; display: block; }
+
+.printer-list {
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+  min-height: 60px;
+}
+.printer-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+}
+.printer-item:last-child { border-bottom: none; }
+.printer-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+
+.spinner {
+  display: inline-block;
+  width: 18px; height: 18px;
+  border: 2.5px solid #e5e7eb;
+  border-top-color: #4f8ef7;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.detecting-row { display: flex; align-items: center; padding: 12px 14px; color: #6b7280; font-size: 13px; }
+
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+}
+.checkbox-row:last-child { border-bottom: none; }
+.checkbox-row input[type=checkbox] { width: auto; margin-top: 2px; accent-color: #4f8ef7; }
+.checkbox-label { font-size: 13px; line-height: 1.5; }
+.checkbox-label small { display: block; color: #9ca3af; font-size: 11px; margin-top: 1px; }
+
+.summary-card {
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.summary-row { display: flex; justify-content: space-between; padding: 4px 0; }
+.summary-row span:first-child { color: #6b7280; }
+
+.info-box {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #1d4ed8;
+  margin-top: 12px;
+}
+
+.footer {
+  padding: 20px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #e5e7eb;
+  background: #f8f9fa;
+}
+
+.btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, background 0.15s;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: #4f8ef7; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #3b7de8; }
+.btn-secondary { background: #fff; color: #374151; border: 1.5px solid #d1d5db; }
+.btn-secondary:hover:not(:disabled) { background: #f9fafb; }
+.btn-link { background: none; color: #6b7280; font-size: 13px; padding: 8px; }
+.btn-link:hover { color: #374151; }
+
+.hidden { display: none !important; }

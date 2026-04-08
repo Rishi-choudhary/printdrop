@@ -86,6 +86,8 @@ function validateConfig() {
   if (!config.razorpay.keyId) warnings.push('RAZORPAY_KEY_ID not set — payment links will use mock mode');
   if (!config.razorpay.webhookSecret) warnings.push('RAZORPAY_WEBHOOK_SECRET not set — webhook signature verification disabled');
   if (!config.telegram.botToken) warnings.push('TELEGRAM_BOT_TOKEN not set — Telegram bot will not start');
+  if (!config.whatsapp.apiKey) warnings.push('WHATSAPP_API_KEY not set — WhatsApp (Gupshup) cannot send messages');
+  if (!config.whatsapp.sourceNumber) warnings.push('GUPSHUP_SOURCE_NUMBER not set — WhatsApp messages will not be sent');
   if (!config.msg91.authKey) warnings.push('MSG91_AUTH_KEY not set — OTP will be returned in API response (dev mode only)');
 
   if (!config.isDev) {
@@ -124,18 +126,23 @@ async function start() {
     await fastify.listen({ port: config.port, host: config.host });
     fastify.log.info(`PrintDrop API running on ${config.host}:${config.port}`);
 
-    // Start Telegram bot polling if token is configured
+    // Start Telegram bot (optional — WhatsApp via Gupshup is the primary channel)
     if (config.telegram.botToken) {
       try {
-        // Bot module is optional — don't crash server if it's not ready yet
         const startBot = require('./bot/telegram');
         if (typeof startBot === 'function') {
           await startBot(fastify);
-          fastify.log.info('Telegram bot polling started');
+          fastify.log.info('Telegram bot started');
         }
       } catch (err) {
         fastify.log.warn(`Telegram bot not started: ${err.message}`);
       }
+    }
+
+    // WhatsApp (Gupshup) is purely webhook-driven — no polling required.
+    // Ensure WHATSAPP_API_KEY and GUPSHUP_SOURCE_NUMBER are set in .env.
+    if (config.whatsapp.apiKey && config.whatsapp.sourceNumber) {
+      fastify.log.info(`WhatsApp (Gupshup) ready — webhook: POST /api/webhooks/whatsapp`);
     }
   } catch (err) {
     fastify.log.error(err);

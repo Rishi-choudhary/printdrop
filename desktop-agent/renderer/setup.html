@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>PrintDrop Agent Setup</title>
+  <link rel="stylesheet" href="setup.css">
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Print<span>Drop</span></div>
+  <div class="step-indicator" id="stepIndicator">Step 1 of 4</div>
+</div>
+
+<!-- ── Step 1: Connect ──────────────────────────────────────────────────── -->
+<div id="step1" class="step content">
+  <h2>Connect Your Agent</h2>
+  <p class="subtitle">Enter your agent key from the PrintDrop dashboard.<br>Go to Dashboard → Settings → Print Agent to find it.</p>
+
+  <div id="banner1" class="banner"></div>
+
+  <div class="form-group">
+    <label>API Server URL</label>
+    <input type="url" id="apiUrl" value="https://api.printdrop.in" autocomplete="off" spellcheck="false">
+  </div>
+
+  <div class="form-group">
+    <label>Agent Key</label>
+    <input type="password" id="agentKey" placeholder="ak_live_…" autocomplete="off" spellcheck="false">
+  </div>
+</div>
+
+<!-- ── Step 2: Detect Printers ─────────────────────────────────────────── -->
+<div id="step2" class="step content hidden">
+  <h2>Detect Printers</h2>
+  <p class="subtitle" id="shopConnected">Finding available printers on this computer…</p>
+
+  <div id="printerList" class="printer-list">
+    <div class="detecting-row">
+      <span class="spinner"></span> Detecting printers…
+    </div>
+  </div>
+
+  <div id="noPrintersWarning" class="banner error hidden">
+    No printers found. Make sure your printer is connected and drivers are installed, then click Refresh.
+  </div>
+</div>
+
+<!-- ── Step 3: Assign Printers ─────────────────────────────────────────── -->
+<div id="step3" class="step content hidden">
+  <h2>Assign Printers</h2>
+  <p class="subtitle">Choose which printer handles black &amp; white and color jobs.</p>
+
+  <div class="form-group">
+    <label>B&amp;W / Standard Printer *</label>
+    <select id="bwPrinter"></select>
+  </div>
+
+  <div class="form-group">
+    <label>Color Printer <span style="color:#9ca3af;font-weight:400">(optional)</span></label>
+    <select id="colorPrinter"></select>
+  </div>
+
+  <div class="info-box">
+    Color jobs will be sent to the B&amp;W printer if no color printer is selected.
+    They will print but may appear in grayscale.
+  </div>
+</div>
+
+<!-- ── Step 4: Preferences ─────────────────────────────────────────────── -->
+<div id="step4" class="step content hidden">
+  <h2>Almost Done!</h2>
+  <p class="subtitle">Set your preferences and finish setup.</p>
+
+  <label class="checkbox-row">
+    <input type="checkbox" id="prefCoverPage" checked>
+    <span class="checkbox-label">
+      Print cover slip before each document
+      <small>Token number and job details on a small slip</small>
+    </span>
+  </label>
+
+  <label class="checkbox-row">
+    <input type="checkbox" id="prefSounds" checked>
+    <span class="checkbox-label">
+      Play sounds for new jobs and completions
+    </span>
+  </label>
+
+  <label class="checkbox-row">
+    <input type="checkbox" id="prefAutoStart" checked>
+    <span class="checkbox-label">
+      Start automatically when this computer boots
+    </span>
+  </label>
+
+  <div class="summary-card" id="summaryCard"></div>
+</div>
+
+<!-- ── Footer ───────────────────────────────────────────────────────────── -->
+<div class="footer">
+  <button class="btn btn-link" id="backBtn" onclick="goBack()">← Back</button>
+  <button class="btn btn-primary" id="nextBtn" onclick="goNext()">Validate &amp; Connect</button>
+</div>
+
+<script src="setup.js"></script>
+</body>
+</html>

@@ -23,9 +23,12 @@ const config = {
   },
 
   whatsapp: {
-    apiUrl: process.env.WHATSAPP_API_URL || '',
-    apiKey: process.env.WHATSAPP_API_KEY || '',
-    webhookSecret: process.env.WHATSAPP_WEBHOOK_SECRET || '',
+    // Gupshup send endpoint
+    apiUrl: process.env.WHATSAPP_API_URL || 'https://api.gupshup.io/wa/api/v1/msg',
+    apiKey: process.env.WHATSAPP_API_KEY || '',           // Gupshup API key
+    webhookSecret: process.env.WHATSAPP_WEBHOOK_SECRET || '', // optional token for webhook verification
+    sourceNumber: process.env.GUPSHUP_SOURCE_NUMBER || '', // your WhatsApp number e.g. "918291234567"
+    appName: process.env.GUPSHUP_APP_NAME || 'PrintDrop',  // Gupshup app/bot name
   },
 
   razorpay: {

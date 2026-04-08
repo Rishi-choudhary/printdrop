@@ -1,20 +1,22 @@
 {
-  "name": "printdrop-desktop",
+  "name": "printdrop-agent",
   "version": "1.0.0",
-  "private": true,
-  "description": "PrintDrop Desktop Agent — System tray app for print shop automation",
+  "description": "PrintDrop Desktop Print Agent",
+  "main": "main.js",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
-    "tauri": "tauri"
+    "start": "electron .",
+    "dev": "NODE_ENV=development electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-autostart": "^2.0.0",
-    "@tauri-apps/plugin-notification": "^2.0.0",
-    "@tauri-apps/plugin-shell": "^2.0.0"
+    "auto-launch": "^5.0.6",
+    "pdf-lib": "^1.17.1",
+    "winston": "^3.11.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
+    "electron": "^29.0.0",
+    "electron-builder": "^24.9.1"
   }
 }

@@ -1,0 +1,8 @@
+Required icon files:
+  icon.png       — 512×512 app icon (Linux + fallback)
+  icon.ico       — Windows multi-resolution icon
+  icon.icns      — macOS icon bundle
+  tray-idle.png  — 16×16 grayscale tray icon (no active jobs)
+  tray-active.png — 16×16 colour tray icon (job printing)
+
+Generate with: https://www.icoconverter.com/ (ICO) and iconutil (ICNS)
