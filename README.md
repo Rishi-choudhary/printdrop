@@ -4,10 +4,10 @@
 
 ---
 
-## How it works
+## How It Works
 
 ```
-Customer sends file via WhatsApp
+Customer sends file via WhatsApp (Gupshup)
         ↓
 Bot asks: pages · color · copies · paper · sides
         ↓
@@ -47,20 +47,33 @@ Customer walks in, shows token, picks up printout
           └──────────────────────┘
 ```
 
-### Monorepo structure
+### Monorepo Structure
 
 ```
 printdrop/
-├── backend/          Node.js + Fastify API
+├── backend/              Node.js + Fastify API
 │   └── src/
-│       ├── bot/      WhatsApp (Gupshup) + Telegram handlers
-│       ├── routes/   REST API routes
-│       └── services/ Business logic (jobs, payments, pricing…)
-├── dashboard/        Next.js shopkeeper dashboard
-├── desktop-agent/    Electron print agent (one per shop)
-├── print-agent/      Node.js CLI agent (Linux/server alternative)
-├── libreoffice/      DOCX → PDF conversion microservice
-└── prisma/           Database schema + migrations
+│       ├── bot/          WhatsApp (Gupshup) + Telegram handlers
+│       ├── routes/       REST API routes
+│       └── services/     Business logic (jobs, payments, pricing…)
+├── dashboard/            Next.js shopkeeper dashboard
+├── desktop-agent/        Electron desktop print agent (one per shop)
+│   ├── main.js           Electron main process + tray
+│   ├── preload.js        Context bridge (IPC)
+│   ├── src/              Core agent logic
+│   │   ├── agent.js      Polling loop, job processing, recovery
+│   │   ├── config.js     Read/write userData/config.json
+│   │   ├── printer.js    OS-level printing (CUPS / SumatraPDF)
+│   │   ├── pdf-utils.js  PDF manipulation (pages, cover slip)
+│   │   ├── downloader.js File download + R2 presigned URL refresh
+│   │   ├── image-to-pdf.js  JPG/PNG → A4 PDF conversion
+│   │   ├── sounds.js     WAV playback via hidden BrowserWindow
+│   │   ├── logger.js     Winston → userData/logs/agent.log
+│   │   └── processed-jobs.js  Crash-safe idempotency store
+│   └── renderer/         Setup wizard + tray dashboard (HTML/CSS/JS)
+├── print-agent/          Node.js CLI agent (Linux/server alternative)
+├── libreoffice/          DOCX → PDF conversion microservice
+└── prisma/               Database schema + migrations
 ```
 
 ---
@@ -90,7 +103,7 @@ printdrop/
 - Razorpay account
 - Cloudflare R2 bucket (or use `STORAGE_DRIVER=local` for local dev)
 
-### 1. Clone & install
+### 1. Clone & Install
 
 ```bash
 git clone https://github.com/Rishi-choudhary/printdrop.git
@@ -98,7 +111,7 @@ cd printdrop
 npm install          # installs all workspaces
 ```
 
-### 2. Configure environment
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
@@ -106,7 +119,7 @@ cp .env.example .env
 
 Edit `.env` with your credentials — see [Environment Variables](#environment-variables) below.
 
-### 3. Set up the database
+### 3. Set Up the Database
 
 ```bash
 npx prisma generate
@@ -114,14 +127,14 @@ npx prisma db push
 npx prisma db seed   # optional: seed sample shops
 ```
 
-### 4. Start development servers
+### 4. Start Development Servers
 
 ```bash
 npm run dev -w backend      # API on :3001
 npm run dev -w dashboard    # Dashboard on :3000
 ```
 
-### 5. Start the desktop agent (for printing)
+### 5. Start the Desktop Agent
 
 ```bash
 cd desktop-agent
@@ -129,7 +142,7 @@ npm install
 npm run dev
 ```
 
-The agent opens a setup wizard on first launch. Enter your shop's agent key (from Dashboard → Settings → Print Agent) and select your printers.
+The agent opens a setup wizard on first launch. Enter your shop's agent key (from **Dashboard → Settings → Print Agent**) and select your printers.
 
 ---
 
@@ -179,7 +192,7 @@ Copy `.env.example` to `.env` and fill in:
    ```
 4. Optionally set `WHATSAPP_WEBHOOK_SECRET` and configure it as a custom header token in Gupshup
 
-### Bot flow
+### Bot Flow
 
 ```
 Send file → All pages / Custom range
@@ -192,7 +205,9 @@ Send file → All pages / Custom range
          → Pay → Token issued
 ```
 
-Commands: `start` · `status` · `history` · `cancel` · `help`
+**Supported file types:** PDF, JPG, PNG, DOCX, PPTX
+
+**Commands:** `start` · `status` · `history` · `cancel` · `help`
 
 ---
 
@@ -201,17 +216,19 @@ Commands: `start` · `status` · `history` · `cancel` · `help`
 Each shop runs the Electron desktop agent on a local Windows/Mac machine connected to their printers.
 
 ### Features
+
 - Polls backend every 4 seconds for queued jobs
 - Routes jobs: B&W jobs → B&W printer · Color jobs → Color printer
-- Downloads files from Cloudflare R2 (no auth needed — public URLs)
+- Downloads files from Cloudflare R2
 - Supports: PDF, JPG, PNG, DOCX, PPTX
 - Prints via CUPS (`lp`) on Mac/Linux or SumatraPDF on Windows
 - Cover slip printed before each job (token + job details)
 - Sound + desktop notification on new job / completion / error
 - Auto-starts on boot
 - Recovers jobs stuck in `printing` after a crash
+- Crash-safe idempotency (no duplicate prints across restarts)
 
-### First-run setup
+### First-Run Setup
 
 1. Download and install the agent from the releases page
 2. Open — the setup wizard appears automatically
@@ -219,7 +236,9 @@ Each shop runs the Electron desktop agent on a local Windows/Mac machine connect
 4. Select your B&W printer and (optionally) Color printer
 5. Click **Finish Setup** — the agent starts polling in the background
 
-### Building the installer
+The agent lives in the system tray. Left-click the tray icon to open the dashboard popup showing job queue, recent jobs, and printer status.
+
+### Building the Installer
 
 ```bash
 cd desktop-agent
@@ -231,9 +250,31 @@ npm run build:win
 
 # macOS (.dmg)
 npm run build:mac
+
+# Linux (.AppImage)
+npm run build:linux
 ```
 
 > **Windows note:** Place `SumatraPDF.exe` in `desktop-agent/resources/win/` before building. Download from [sumatrapdfreader.org](https://www.sumatrapdfreader.org/download-free-pdf-viewer). It is bundled into the installer automatically.
+
+### Agent Architecture
+
+```
+main.js (Electron main process)
+  ├── Tray icon (idle/active) + right-click menu
+  ├── Setup wizard window (first run)
+  ├── Dashboard popup window (frameless, above tray)
+  └── src/agent.js
+        ├── poll /api/jobs?status=queued every 4s
+        ├── sendHeartbeat /api/printers/heartbeat every 30s
+        └── processJob(job)
+              ├── Download file (3× retry, exponential backoff)
+              ├── Convert image → PDF if needed
+              ├── PATCH status → printing
+              ├── Generate cover slip
+              ├── Print (3× retry)
+              └── PATCH status → ready / cancelled
+```
 
 ---
 
@@ -248,7 +289,7 @@ All endpoints are prefixed with `/api`.
 | `Authorization: Bearer <jwt>` | JWT | Dashboard, web users |
 | `Authorization: Bearer <agentKey>` | Shop agent key | Desktop print agent |
 
-### Key endpoints
+### Key Endpoints
 
 | Method | Path | Description |
 |---|---|---|
@@ -258,10 +299,10 @@ All endpoints are prefixed with `/api`.
 | `PATCH` | `/jobs/:id/status` | Update job status |
 | `GET` | `/shops` | List active shops |
 | `POST` | `/printers/heartbeat` | Agent heartbeat + printer sync |
-| `POST` | `/webhooks/whatsapp` | Incoming WhatsApp messages |
+| `POST` | `/webhooks/whatsapp` | Incoming WhatsApp messages (Gupshup) |
 | `POST` | `/webhooks/razorpay` | Payment confirmation webhook |
 
-### Job status flow
+### Job Status Flow
 
 ```
 pending → payment_pending → queued → printing → ready → picked_up
@@ -285,7 +326,7 @@ The Next.js dashboard at `/dashboard` is for shopkeepers:
 
 ---
 
-## Database Schema (key models)
+## Database Schema (Key Models)
 
 | Model | Purpose |
 |---|---|
@@ -302,16 +343,15 @@ The Next.js dashboard at `/dashboard` is for shopkeepers:
 
 ### Backend (Railway / Render)
 
-The backend is Docker-ready. See `backend/Dockerfile` and `docker-compose.yml`.
+The backend is Docker-ready:
 
 ```bash
-# Build and run with Docker Compose
 docker-compose up --build
 ```
 
-Required services: `backend` · `dashboard` · `libreoffice` (for DOCX conversion)
+Required services: `backend` · `dashboard` · `libreoffice`
 
-### LibreOffice conversion service
+### LibreOffice Conversion Service
 
 Required for DOCX/PPTX → PDF conversion and page counting:
 
