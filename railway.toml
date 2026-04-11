@@ -1,8 +1,13 @@
 # Railway — PrintDrop deployment config
-# Dockerfile paths are configured per-service via RAILWAY_DOCKERFILE_PATH env var:
-#   printdrop / printdrop-api  → backend/Dockerfile
-#   printdrop-dashboard        → dashboard/Dockerfile
-#   printdrop-libreoffice      → libreoffice/Dockerfile
+# This applies to backend services (printdrop, printdrop-api).
+# The printdrop-dashboard service must have its Dockerfile path
+# set manually in Railway Dashboard → Settings → Source:
+#   Dockerfile Path: dashboard/Dockerfile
+#   Docker Context: .
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
