@@ -1,14 +1,8 @@
 # Railway — PrintDrop deployment config
-# Each service is configured separately.
-# Service setup:
-#   1. printdrop / printdrop-api  → backend/Dockerfile
-#   2. printdrop-dashboard        → dashboard/Dockerfile
-#   3. printdrop-libreoffice      → libreoffice/Dockerfile
-#   4. printdrop-redis            → Railway managed Redis
-
-[build]
-builder = "dockerfile"
-dockerfilePath = "backend/Dockerfile"
+# Dockerfile paths are configured per-service via RAILWAY_DOCKERFILE_PATH env var:
+#   printdrop / printdrop-api  → backend/Dockerfile
+#   printdrop-dashboard        → dashboard/Dockerfile
+#   printdrop-libreoffice      → libreoffice/Dockerfile
 
 [deploy]
 healthcheckPath = "/health"
