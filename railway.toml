@@ -1,20 +1,17 @@
 # Railway — PrintDrop deployment config
-# Each service (backend, dashboard, libreoffice) is configured
-# as a separate service in the Railway project, each pointing
-# to its own Dockerfile.
-#
-# Service setup in Railway dashboard:
-#   1. printdrop-api       → backend/Dockerfile  (root service)
-#   2. printdrop-dashboard → dashboard/Dockerfile
-#   3. printdrop-libreoffice → libreoffice/Dockerfile
+# Each service is configured separately.
+# Service setup:
+#   1. printdrop / printdrop-api  → backend/Dockerfile
+#   2. printdrop-dashboard        → dashboard/Dockerfile
+#   3. printdrop-libreoffice      → libreoffice/Dockerfile
+#   4. printdrop-redis            → Railway managed Redis
 
 [build]
 builder = "dockerfile"
 dockerfilePath = "backend/Dockerfile"
-dockerContext = "."
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
