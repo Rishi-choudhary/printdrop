@@ -2,6 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { printFile, getAvailablePrinters } = require('./printer');
 const { prepareForPrinting, generateCoverPage, prependCoverPage } = require('./pdf-utils');
+const { wrapImageAsPdf } = require('./image-to-pdf');
+
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']);
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const API_URL      = process.env.API_URL    || 'http://localhost:3001';
@@ -12,7 +15,7 @@ const HEARTBEAT_MS = 30000;
 const PRINTER_ENV  = process.env.PRINTER_NAME || '';
 const SHOP_ID_ENV  = process.env.SHOP_ID || '';
 const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR || path.join(__dirname, '..', 'downloads');
-const SIMULATE     = process.env.SIMULATE === 'true' || process.env.SIMULATE === '1';
+let   SIMULATE     = process.env.SIMULATE === 'true' || process.env.SIMULATE === '1';
 const AUTO_READY   = process.env.AUTO_READY !== 'false';
 const COVER_PAGE   = process.env.COVER_PAGE === 'true' || process.env.COVER_PAGE === '1';
 const MAX_RETRIES  = 3;
@@ -227,7 +230,21 @@ async function processJob(job, printer, { isRecovery = false } = {}) {
       }
     }
 
-    // ── Step 2: Mark as printing ──
+    // ── Step 2: Convert image to PDF if needed ──
+    let convertedPath = null;
+    const ext = path.extname(job.fileName || '').toLowerCase();
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      try {
+        log('Converting image to PDF...');
+        convertedPath = await wrapImageAsPdf(filePath);
+        log('Image converted to PDF');
+        filePath = convertedPath;
+      } catch (err) {
+        log(`Image→PDF conversion failed: ${err.message}. Trying to print raw file.`);
+      }
+    }
+
+    // ── Step 3: Mark as printing ──
     if (!isRecovery) {
       try {
         await updateJobStatus(job.id, 'printing', {
@@ -299,6 +316,9 @@ async function processJob(job, printer, { isRecovery = false } = {}) {
     // ── Step 5: Cleanup ──
     if (coverPath) { try { fs.unlinkSync(coverPath); } catch {} }
     if (isTmpFile) { try { fs.unlinkSync(printPath); } catch {} }
+    if (convertedPath && convertedPath !== filePath && convertedPath !== printPath) {
+      try { fs.unlinkSync(convertedPath); } catch {}
+    }
     try { fs.unlinkSync(filePath); } catch {}
 
     // ── Step 6: Update final status ──
@@ -439,7 +459,12 @@ async function main() {
   } else {
     try {
       const printers = await getAvailablePrinters();
-      console.log(`  Printer: system default (detected: ${printers.slice(0, 3).join(', ') || 'none'})`);
+      if (printers.length === 0) {
+        console.log(`  Printer: NONE detected — auto-enabling SIMULATE mode`);
+        SIMULATE = true;
+      } else {
+        console.log(`  Printer: system default (detected: ${printers.slice(0, 3).join(', ')})`);
+      }
     } catch {
       console.log('  Printer: system default');
     }

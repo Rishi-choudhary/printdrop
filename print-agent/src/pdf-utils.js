@@ -200,10 +200,10 @@ async function generateCoverPage(job, printerName) {
     });
     cx += dashLen + gapLen;
   }
-  page.drawText('✂', {
+  page.drawText('CUT HERE', {
     x: margin,
-    y: cutY - 7,
-    size: 14,
+    y: cutY - 5,
+    size: 8,
     font: regularFont,
     color: rgb(0.5, 0.5, 0.5),
   });

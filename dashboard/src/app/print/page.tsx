@@ -77,7 +77,7 @@ export default function PrintPage() {
     const pages = prefs.pageRange === 'all' ? file.pageCount : estimatePageCount(prefs.pageRange, file.pageCount);
     const rate  = prefs.color ? s.ratesColorSingle : s.ratesBwSingle;
     const sub   = rate * pages * prefs.copies;
-    const fee   = Math.round(sub * 0.10 * 100) / 100;
+    const fee   = Math.round(0.50 * pages * prefs.copies * 100) / 100;
     return { rate, pages, subtotal: sub, fee, total: Math.round((sub + fee) * 100) / 100 };
   }, [file, selectedShop, prefs]);
 
@@ -388,7 +388,7 @@ export default function PrintPage() {
                     <span>₹{priceEstimate.subtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>Platform fee (10%)</span>
+                    <span>Platform fee (₹0.50/page)</span>
                     <span>₹{priceEstimate.fee.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-base font-bold border-t border-gray-100 pt-2 mt-1">

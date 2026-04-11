@@ -141,7 +141,7 @@ function priceSummaryMessage(details) {
   text += `Copies: ${copies}\n`;
   text += `Shop: ${escapeText(shopName)}\n\n`;
   text += `${pricePerPage}/page x ${pages}pg x ${copies} = ${subtotal.toFixed(2)}\n`;
-  text += `Platform fee: ${platformFee.toFixed(2)}\n`;
+  text += `Platform fee (₹0.50/pg): ${platformFee.toFixed(2)}\n`;
   text += `*Total: Rs ${total.toFixed(2)}*\n\n`;
   text += `Confirm this order?`;
 

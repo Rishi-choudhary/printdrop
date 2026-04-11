@@ -4,10 +4,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useShopQueue, useShopStats } from '@/lib/hooks';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 import {
   Printer, CheckCircle, Zap, ZapOff, Volume2, VolumeX,
   RefreshCw, IndianRupee, FileText, Layers, Palette, Copy as CopyIcon,
-  WifiOff,
+  WifiOff, Settings, BarChart3, LogOut,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
@@ -129,6 +130,17 @@ function JobCard({ job, autoMode, onAction, isUpdating, audio }: {
         </span>
       </div>
 
+      {/* Retry cancelled */}
+      {job.status === 'cancelled' && (
+        <div className="flex gap-2 mt-1">
+          <button onClick={() => onAction(job.id, 'queued')}
+            disabled={isUpdating}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-blue-500 hover:bg-blue-600 active:scale-95 text-white transition-all disabled:opacity-50">
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
+      )}
+
       {/* Actions */}
       {['queued', 'printing', 'ready'].includes(job.status) && (
         <div className="flex gap-2 mt-1">
@@ -221,7 +233,7 @@ function Clock() {
 
 // ─── Main KDS Page ────────────────────────────────────────────────────────────
 export default function KDSPage() {
-  const { user }                = useAuth();
+  const { user, logout }        = useAuth();
   const shopId                  = user?.shop?.id;
   const { data: raw, mutate, error: pollError } = useShopQueue(shopId);
   const { data: stats }         = useShopStats(shopId);
@@ -330,6 +342,15 @@ export default function KDSPage() {
 
           {/* Controls */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <Link href="/dashboard/settings" title="Settings"
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <Settings className="w-4 h-4" />
+            </Link>
+            <Link href="/dashboard/analytics" title="Analytics"
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <BarChart3 className="w-4 h-4" />
+            </Link>
+
             <button onClick={audio.toggle} title="Toggle sound"
               className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
               {audio.enabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -346,6 +367,11 @@ export default function KDSPage() {
             <button onClick={() => mutate()}
               className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
               <RefreshCw className="w-4 h-4" />
+            </button>
+
+            <button onClick={logout} title="Logout"
+              className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+              <LogOut className="w-4 h-4" />
             </button>
 
             <div className="hidden md:flex flex-col items-end leading-none pl-1">

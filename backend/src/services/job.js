@@ -8,7 +8,7 @@ const STATUS_TRANSITIONS = {
   printing: ['ready', 'cancelled'],
   ready: ['picked_up'],
   picked_up: [],
-  cancelled: [],
+  cancelled: ['queued'],
 };
 
 const STATUS_TIMESTAMP_MAP = {
@@ -131,7 +131,6 @@ async function getShopQueue(shopId, date) {
     where: {
       shopId,
       createdAt: { gte: dayStart, lte: dayEnd },
-      status: { not: 'cancelled' },
     },
     include: { user: true, payment: true },
     orderBy: { token: 'asc' },

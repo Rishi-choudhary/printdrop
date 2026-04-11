@@ -30,6 +30,10 @@ function getAvailablePrinters() {
   });
 }
 
+function isVirtualPrinter(name) {
+  return name && (name.includes('(Dev)') || name.startsWith('Virtual_'));
+}
+
 function printFile(filePath, options = {}) {
   const {
     printerName,
@@ -41,11 +45,18 @@ function printFile(filePath, options = {}) {
   } = options;
 
   return new Promise((resolve, reject) => {
-    if (simulate) {
-      const fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+    // Verify file exists before attempting to print
+    if (!fs.existsSync(filePath)) {
+      return reject(new Error(`File not found: ${filePath}`));
+    }
+
+    // Auto-simulate for virtual/dev printers that don't exist in CUPS
+    if (simulate || isVirtualPrinter(printerName)) {
+      const fileSize = fs.statSync(filePath).size;
       const delay = 600 + Math.random() * 1400;
+      const label = isVirtualPrinter(printerName) ? 'Virtual printer' : 'Simulated';
       setTimeout(() => {
-        resolve({ success: true, output: `Simulated in ${(delay / 1000).toFixed(1)}s`, simulated: true });
+        resolve({ success: true, output: `${label} — ${(fileSize / 1024).toFixed(1)} KB sent in ${(delay / 1000).toFixed(1)}s`, simulated: true });
       }, delay);
       return;
     }
@@ -60,10 +71,12 @@ function printFile(filePath, options = {}) {
         })
         .catch(reject);
     } else {
+      const { execFile } = require('child_process');
       const args = buildLpArgs({ printerName, copies, doubleSided, color, paperSize });
-      const cmd = `lp ${args.join(' ')} "${filePath}"`;
+      args.push('--');
+      args.push(filePath);
 
-      exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+      execFile('lp', args, { timeout: 30000 }, (err, stdout, stderr) => {
         if (err) return reject(new Error(`lp failed: ${err.message}\n${stderr}`));
         resolve({ success: true, output: stdout.trim() });
       });
@@ -73,20 +86,16 @@ function printFile(filePath, options = {}) {
 
 function buildLpArgs({ printerName, copies, doubleSided, color, paperSize }) {
   const args = [];
-  if (printerName) args.push(`-d "${printerName}"`);
-  if (copies > 1) args.push(`-n ${copies}`);
+  if (printerName) { args.push('-d', printerName); }
+  if (copies > 1) { args.push('-n', String(copies)); }
 
-  if (doubleSided) {
-    args.push('-o sides=two-sided-long-edge');
-  } else {
-    args.push('-o sides=one-sided');
-  }
+  args.push('-o', doubleSided ? 'sides=two-sided-long-edge' : 'sides=one-sided');
 
-  if (!color) args.push('-o ColorModel=Gray');
+  if (!color) args.push('-o', 'ColorModel=Gray');
 
   const mediaMap = { A4: 'A4', A3: 'A3', Letter: 'Letter', Legal: 'Legal' };
-  args.push(`-o media=${mediaMap[paperSize] || 'A4'}`);
-  args.push('-o fit-to-page');
+  args.push('-o', `media=${mediaMap[paperSize] || 'A4'}`);
+  args.push('-o', 'fit-to-page');
 
   return args;
 }
@@ -154,4 +163,4 @@ function findSumatraPDF() {
   });
 }
 
-module.exports = { getAvailablePrinters, printFile };
+module.exports = { getAvailablePrinters, printFile, isVirtualPrinter };

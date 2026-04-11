@@ -9,8 +9,12 @@ RUN npm ci --workspace=dashboard --include-workspace-root
 # Copy dashboard source
 COPY dashboard/ ./dashboard/
 
-# Build
+# Build — NEXT_PUBLIC_API_URL is not needed at build time;
+# client code defaults to /api (relative), and next.config.js
+# rewrites proxy /api/* to the backend at runtime.
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN npm run build -w dashboard
 
 EXPOSE 3000

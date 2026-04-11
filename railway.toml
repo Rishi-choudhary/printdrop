@@ -1,6 +1,12 @@
 # Railway — PrintDrop deployment config
-# This file configures the backend service (root service).
-# Add dashboard + libreoffice as separate services in the Railway dashboard.
+# Each service (backend, dashboard, libreoffice) is configured
+# as a separate service in the Railway project, each pointing
+# to its own Dockerfile.
+#
+# Service setup in Railway dashboard:
+#   1. printdrop-api       → backend/Dockerfile  (root service)
+#   2. printdrop-dashboard → dashboard/Dockerfile
+#   3. printdrop-libreoffice → libreoffice/Dockerfile
 
 [build]
 builder = "dockerfile"

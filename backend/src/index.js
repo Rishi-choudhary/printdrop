@@ -25,12 +25,21 @@ async function buildServer() {
   });
 
   // Register CORS — allow frontend origin and support preflight for file uploads
+  const allowedOrigins = [
+    config.frontendUrl,
+    'http://localhost:3000',
+    'http://localhost:3001',
+  ];
   await fastify.register(cors, {
-    origin: [
-      config.frontendUrl,
-      'http://localhost:3000',
-      'http://localhost:3001',
-    ],
+    origin: (origin, cb) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server)
+      if (!origin) return cb(null, true);
+      // Allow configured origins and any *.railway.app domain
+      if (allowedOrigins.includes(origin) || origin.endsWith('.railway.app')) {
+        return cb(null, true);
+      }
+      cb(new Error('Not allowed by CORS'), false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

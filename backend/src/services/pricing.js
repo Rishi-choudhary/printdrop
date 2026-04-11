@@ -1,4 +1,4 @@
-const PLATFORM_FEE_PERCENT = 10;
+const PLATFORM_FEE_PER_PAGE = 0.5; // ₹0.50 per page
 
 function parsePageRange(rangeStr, totalPages) {
   if (!rangeStr || rangeStr === 'all') {
@@ -62,7 +62,7 @@ function calculatePrice({ shop, pageCount, pageRange, color, doubleSided, copies
     subtotal += shop.spiralCharge * (copies || 1);
   }
 
-  const platformFee = Math.round(subtotal * PLATFORM_FEE_PERCENT / 100 * 100) / 100;
+  const platformFee = Math.round(PLATFORM_FEE_PER_PAGE * effectivePages * (copies || 1) * 100) / 100;
   const total = Math.round((subtotal + platformFee) * 100) / 100;
   const shopEarning = subtotal;
 

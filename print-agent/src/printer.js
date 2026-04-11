@@ -29,6 +29,10 @@ function getAvailablePrinters() {
   });
 }
 
+function isVirtualPrinter(name) {
+  return name && (name.includes('(Dev)') || name.startsWith('Virtual_'));
+}
+
 function printFile(filePath, options = {}) {
   const {
     printerName,
@@ -40,13 +44,20 @@ function printFile(filePath, options = {}) {
   } = options;
 
   return new Promise((resolve, reject) => {
-    if (simulate) {
-      const fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
-      console.log(`    [SIMULATED] File: ${filePath} (${(fileSize / 1024).toFixed(1)} KB)`);
-      console.log(`    [SIMULATED] Copies:${copies} Sides:${doubleSided ? 'double' : 'single'} Color:${color} Paper:${paperSize}`);
+    // Verify file exists before attempting to print
+    if (!fs.existsSync(filePath)) {
+      return reject(new Error(`File not found: ${filePath}`));
+    }
+
+    // Auto-simulate for virtual/dev printers that don't exist in CUPS
+    if (simulate || isVirtualPrinter(printerName)) {
+      const fileSize = fs.statSync(filePath).size;
+      const label = isVirtualPrinter(printerName) ? 'VIRTUAL' : 'SIMULATED';
+      console.log(`    [${label}] File: ${filePath} (${(fileSize / 1024).toFixed(1)} KB)`);
+      console.log(`    [${label}] Copies:${copies} Sides:${doubleSided ? 'double' : 'single'} Color:${color} Paper:${paperSize}`);
       const delay = 600 + Math.random() * 1400;
       setTimeout(() => {
-        resolve({ success: true, output: `Simulated in ${(delay / 1000).toFixed(1)}s`, simulated: true });
+        resolve({ success: true, output: `${label} print in ${(delay / 1000).toFixed(1)}s`, simulated: true });
       }, delay);
       return;
     }
@@ -62,9 +73,11 @@ function printFile(filePath, options = {}) {
         .catch(reject);
     } else {
       const args = buildLpArgs({ printerName, copies, doubleSided, color, paperSize });
-      const cmd = `lp ${args.join(' ')} "${filePath}"`;
+      args.push('--');
+      args.push(filePath);
 
-      exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+      const { execFile } = require('child_process');
+      execFile('lp', args, { timeout: 30000 }, (err, stdout, stderr) => {
         if (err) return reject(new Error(`lp failed: ${err.message}\n${stderr}`));
         resolve({ success: true, output: stdout.trim() });
       });
@@ -77,26 +90,21 @@ function printFile(filePath, options = {}) {
  */
 function buildLpArgs({ printerName, copies, doubleSided, color, paperSize }) {
   const args = [];
-  if (printerName) args.push(`-d "${printerName}"`);
-  if (copies > 1) args.push(`-n ${copies}`);
+  if (printerName) { args.push('-d', printerName); }
+  if (copies > 1) { args.push('-n', String(copies)); }
 
   // Duplex
-  if (doubleSided) {
-    args.push('-o sides=two-sided-long-edge');
-  } else {
-    args.push('-o sides=one-sided');
-  }
+  args.push('-o', doubleSided ? 'sides=two-sided-long-edge' : 'sides=one-sided');
 
   // Color model
-  if (!color) args.push('-o ColorModel=Gray');
+  if (!color) args.push('-o', 'ColorModel=Gray');
 
   // Paper size (A4, A3, Letter, Legal)
   const mediaMap = { A4: 'A4', A3: 'A3', Letter: 'Letter', Legal: 'Legal' };
-  const media = mediaMap[paperSize] || 'A4';
-  args.push(`-o media=${media}`);
+  args.push('-o', `media=${mediaMap[paperSize] || 'A4'}`);
 
   // Fit to page
-  args.push('-o fit-to-page');
+  args.push('-o', 'fit-to-page');
 
   return args;
 }
