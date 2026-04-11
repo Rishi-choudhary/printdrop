@@ -21,10 +21,6 @@
     "build": "npm run build -w dashboard"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
-    "prisma": "^5.20.0"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.20.0"
+    "concurrently": "^8.2.2"
   }
 }
