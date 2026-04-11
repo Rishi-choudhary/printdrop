@@ -278,6 +278,7 @@ export default function SettingsPage() {
   const [shop, setShop] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [rateError, setRateError] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
 
@@ -313,6 +314,17 @@ export default function SettingsPage() {
   };
 
   const saveRates = async () => {
+    const rateFields = [
+      shop.ratesBwSingle, shop.ratesBwDouble,
+      shop.ratesColorSingle, shop.ratesColorDouble,
+      shop.bindingCharge, shop.spiralCharge,
+    ];
+    if (rateFields.some((v) => isNaN(v) || v < 0)) {
+      setMsg('');
+      setRateError('Rates cannot be negative');
+      setTimeout(() => setRateError(''), 4000);
+      return;
+    }
     setSaving(true);
     try {
       await api.patch(`/shops/${shopId}/rates`, {
@@ -400,13 +412,14 @@ export default function SettingsPage() {
         <CardHeader><h2 className="font-semibold">Pricing</h2></CardHeader>
         <CardBody className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Input label="B&W Single-sided (₹/page)" type="number" step="0.5" value={shop.ratesBwSingle} onChange={(e) => updateField('ratesBwSingle', parseFloat(e.target.value))} />
-            <Input label="B&W Double-sided (₹/page)" type="number" step="0.5" value={shop.ratesBwDouble} onChange={(e) => updateField('ratesBwDouble', parseFloat(e.target.value))} />
-            <Input label="Color Single-sided (₹/page)" type="number" step="0.5" value={shop.ratesColorSingle} onChange={(e) => updateField('ratesColorSingle', parseFloat(e.target.value))} />
-            <Input label="Color Double-sided (₹/page)" type="number" step="0.5" value={shop.ratesColorDouble} onChange={(e) => updateField('ratesColorDouble', parseFloat(e.target.value))} />
-            <Input label="Staple Binding (₹)" type="number" step="1" value={shop.bindingCharge} onChange={(e) => updateField('bindingCharge', parseFloat(e.target.value))} />
-            <Input label="Spiral Binding (₹)" type="number" step="1" value={shop.spiralCharge} onChange={(e) => updateField('spiralCharge', parseFloat(e.target.value))} />
+            <Input label="B&W Single-sided (₹/page)" type="number" step="0.5" min="0" value={shop.ratesBwSingle} onChange={(e) => updateField('ratesBwSingle', parseFloat(e.target.value))} />
+            <Input label="B&W Double-sided (₹/page)" type="number" step="0.5" min="0" value={shop.ratesBwDouble} onChange={(e) => updateField('ratesBwDouble', parseFloat(e.target.value))} />
+            <Input label="Color Single-sided (₹/page)" type="number" step="0.5" min="0" value={shop.ratesColorSingle} onChange={(e) => updateField('ratesColorSingle', parseFloat(e.target.value))} />
+            <Input label="Color Double-sided (₹/page)" type="number" step="0.5" min="0" value={shop.ratesColorDouble} onChange={(e) => updateField('ratesColorDouble', parseFloat(e.target.value))} />
+            <Input label="Staple Binding (₹)" type="number" step="1" min="0" value={shop.bindingCharge} onChange={(e) => updateField('bindingCharge', parseFloat(e.target.value))} />
+            <Input label="Spiral Binding (₹)" type="number" step="1" min="0" value={shop.spiralCharge} onChange={(e) => updateField('spiralCharge', parseFloat(e.target.value))} />
           </div>
+          {rateError && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{rateError}</p>}
           <Button onClick={saveRates} disabled={saving}>{saving ? 'Saving...' : 'Save Rates'}</Button>
         </CardBody>
       </Card>

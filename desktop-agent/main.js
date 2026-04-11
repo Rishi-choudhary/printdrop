@@ -26,12 +26,40 @@ const agent = require('./src/agent');
 const { playSound } = require('./src/sounds');
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
-const ICONS = {
-  idle:   path.join(__dirname, 'assets', 'icons', 'tray-idle.png'),
-  active: path.join(__dirname, 'assets', 'icons', 'tray-active.png'),
-  app:    path.join(__dirname, 'assets', 'icons', 'icon.png'),
-};
 const PRELOAD = path.join(__dirname, 'preload.js');
+
+// Generate placeholder tray icons if real ones don't exist
+function getIcon(name) {
+  const iconPath = path.join(__dirname, 'assets', 'icons', name);
+  if (fs.existsSync(iconPath)) return nativeImage.createFromPath(iconPath);
+
+  // Create a simple 16×16 (tray) or 64×64 (app) placeholder icon in memory
+  const isTray = name.startsWith('tray');
+  const size = isTray ? 16 : 64;
+  const isActive = name.includes('active');
+
+  // 1-pixel RGBA buffer → resize
+  const canvas = nativeImage.createEmpty();
+
+  // Use Electron's built-in to create a colored square
+  const buf = Buffer.alloc(size * size * 4);
+  const r = isActive ? 34 : 128;
+  const g = isActive ? 197 : 128;
+  const b = isActive ? 94 : 128;
+  for (let i = 0; i < size * size; i++) {
+    buf[i * 4] = r;
+    buf[i * 4 + 1] = g;
+    buf[i * 4 + 2] = b;
+    buf[i * 4 + 3] = 255;
+  }
+  return nativeImage.createFromBuffer(buf, { width: size, height: size });
+}
+
+const ICONS = {
+  get idle()   { return getIcon('tray-idle.png'); },
+  get active() { return getIcon('tray-active.png'); },
+  get app()    { return getIcon('icon.png'); },
+};
 
 // ── Windows & Tray ────────────────────────────────────────────────────────────
 let tray = null;
@@ -70,8 +98,7 @@ app.on('second-instance', () => {
 // ── Tray ──────────────────────────────────────────────────────────────────────
 
 function initTray() {
-  const icon = nativeImage.createFromPath(ICONS.idle);
-  tray = new Tray(icon);
+  tray = new Tray(ICONS.idle);
   tray.setToolTip('PrintDrop Agent');
 
   rebuildTrayMenu();
@@ -110,7 +137,7 @@ function rebuildTrayMenu() {
 
 function setTrayIcon(state) {
   if (!tray || tray.isDestroyed()) return;
-  tray.setImage(nativeImage.createFromPath(ICONS[state] || ICONS.idle));
+  tray.setImage(ICONS[state] || ICONS.idle);
   tray.setToolTip(
     state === 'active' ? 'PrintDrop — Printing…' : 'PrintDrop Agent',
   );
@@ -139,6 +166,11 @@ function openSetupWindow() {
 
   setupWin.loadFile(path.join(__dirname, 'renderer', 'setup.html'));
   setupWin.on('closed', () => { setupWin = null; });
+
+  // Open DevTools in dev mode to debug issues
+  if (process.env.NODE_ENV === 'development') {
+    setupWin.webContents.openDevTools({ mode: 'detach' });
+  }
 
   // Remove default menu bar
   setupWin.setMenuBarVisibility(false);
@@ -244,7 +276,10 @@ function startAgent(cfg) {
 
 function notify(title, body) {
   if (!Notification.isSupported()) return;
-  new Notification({ title, body, icon: ICONS.app, silent: true }).show();
+  const iconPath = path.join(__dirname, 'assets', 'icons', 'icon.png');
+  const opts = { title, body, silent: true };
+  if (fs.existsSync(iconPath)) opts.icon = iconPath;
+  new Notification(opts).show();
 }
 
 // ── Auto-launch ───────────────────────────────────────────────────────────────
@@ -269,8 +304,10 @@ function registerIpcHandlers() {
   // ── Wizard ──────────────────────────────────────────────────────────────
 
   ipcMain.handle('wizard:validate-key', async (_e, { agentKey, apiUrl }) => {
+    console.log('[wizard:validate-key] Called with apiUrl:', apiUrl, 'keyLength:', agentKey?.length);
     try {
       const url = `${apiUrl}/api/printers/heartbeat`;
+      console.log('[wizard:validate-key] POSTing to', url);
       const res = await fetch(url, {
         method: 'POST',
         headers: {
@@ -279,13 +316,17 @@ function registerIpcHandlers() {
         },
         body: JSON.stringify({ printers: [] }),
       });
+      console.log('[wizard:validate-key] Response status:', res.status);
       if (!res.ok) {
         const body = await res.text().catch(() => '');
+        console.log('[wizard:validate-key] Error body:', body);
         return { ok: false, error: `Invalid agent key (${res.status})` };
       }
       const data = await res.json();
+      console.log('[wizard:validate-key] Success:', JSON.stringify(data));
       return { ok: true, shopId: data.shopId, shopName: data.shopName || '' };
     } catch (err) {
+      console.error('[wizard:validate-key] Error:', err.message);
       return { ok: false, error: `Connection failed: ${err.message}` };
     }
   });
@@ -294,6 +335,10 @@ function registerIpcHandlers() {
     const { getAvailablePrinters } = require('./src/printer');
     try {
       const printers = await getAvailablePrinters();
+      // In dev mode with no real printers, add virtual ones for testing
+      if (printers.length === 0 && process.env.NODE_ENV === 'development') {
+        printers.push('Virtual_BW_Printer (Dev)', 'Virtual_Color_Printer (Dev)');
+      }
       return { printers };
     } catch (err) {
       return { printers: [], error: err.message };

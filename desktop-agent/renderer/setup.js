@@ -205,13 +205,16 @@ async function handleStep4() {
 document.addEventListener('DOMContentLoaded', () => {
   showStep(1);
 
+  document.getElementById('nextBtn').addEventListener('click', goNext);
+  document.getElementById('backBtn').addEventListener('click', goBack);
+
   // Add a Refresh button to step 2
   const s2 = document.getElementById('step2');
   const refreshBtn = document.createElement('button');
   refreshBtn.className = 'btn btn-secondary';
   refreshBtn.style.marginTop = '16px';
   refreshBtn.textContent = '↻ Refresh Printer List';
-  refreshBtn.onclick = detectPrinters;
+  refreshBtn.addEventListener('click', detectPrinters);
   s2.appendChild(refreshBtn);
 });
 

@@ -42,10 +42,10 @@ export default function AnalyticsPage() {
     }
   }
 
-  // Hourly distribution
+  // Hourly distribution (force IST timezone for consistency)
   const hourlyJobs: Record<number, number> = {};
   for (const job of jobsList) {
-    const hour = new Date(job.createdAt).getHours();
+    const hour = parseInt(new Date(job.createdAt).toLocaleString('en-IN', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }), 10);
     hourlyJobs[hour] = (hourlyJobs[hour] || 0) + 1;
   }
   const busiestHour = Object.entries(hourlyJobs).sort(([, a], [, b]) => (b as number) - (a as number))[0];

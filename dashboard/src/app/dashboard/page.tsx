@@ -7,7 +7,9 @@ import { api } from '@/lib/api';
 import {
   Printer, CheckCircle, Zap, ZapOff, Volume2, VolumeX,
   RefreshCw, IndianRupee, FileText, Layers, Palette, Copy as CopyIcon,
+  WifiOff,
 } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Job {
@@ -221,9 +223,10 @@ function Clock() {
 export default function KDSPage() {
   const { user }                = useAuth();
   const shopId                  = user?.shop?.id;
-  const { data: raw, mutate }   = useShopQueue(shopId);
+  const { data: raw, mutate, error: pollError } = useShopQueue(shopId);
   const { data: stats }         = useShopStats(shopId);
   const audio                   = useAudio();
+  const { toast }               = useToast();
 
   const [autoMode, setAutoMode] = useState(() =>
     typeof window !== 'undefined' && localStorage.getItem('kds_auto') === 'true'
@@ -275,14 +278,16 @@ export default function KDSPage() {
     const printing = active.filter(j => j.status === 'printing');
     const queued   = active.filter(j => j.status === 'queued');
     if (printing.length === 0 && queued.length > 0) {
-      api.patch(`/jobs/${queued[0].id}/status`, { status: 'printing' }).then(() => mutate()).catch(() => {});
+      api.patch(`/jobs/${queued[0].id}/status`, { status: 'printing' }).then(() => mutate()).catch(() => {
+        toast('Auto-print failed — try printing manually', 'error');
+      });
     }
   }, [allJobs, autoMode]); // eslint-disable-line
 
   const handleAction = async (id: string, status: string) => {
     setUpdating(id);
     try { await api.patch(`/jobs/${id}/status`, { status }); mutate(); }
-    catch (e: any) { console.error(e.message); }
+    catch (e: any) { toast(e.message || 'Failed to update job status', 'error'); }
     finally { setUpdating(null); }
   };
 
@@ -350,6 +355,14 @@ export default function KDSPage() {
           </div>
         </div>
       </header>
+
+      {/* ─── Connectivity warning ─── */}
+      {pollError && (
+        <div className="mx-4 mt-3 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm font-medium">
+          <WifiOff className="w-4 h-4 shrink-0" />
+          Connection lost — queue may be outdated. Retrying...
+        </div>
+      )}
 
       {/* ─── Content ─── */}
       <main className="p-4 lg:p-5">

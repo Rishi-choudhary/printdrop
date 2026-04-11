@@ -8,9 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Store, Plus, Power, MapPin, Clock } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 export default function AdminShopsPage() {
   const { data: shops, mutate, error } = useAdminShops();
+  const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '', address: '', ownerPhone: '' });
   const [formError, setFormError] = useState('');
@@ -21,7 +23,7 @@ export default function AdminShopsPage() {
       await api.patch(`/admin/shops/${shopId}`, { isActive: !isActive });
       mutate();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message || 'Action failed', 'error');
     }
   };
 
@@ -30,7 +32,7 @@ export default function AdminShopsPage() {
       await api.patch(`/admin/shops/${shopId}`, { autoPrint: !autoPrint });
       mutate();
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message || 'Action failed', 'error');
     }
   };
 

@@ -8,6 +8,22 @@ const messages = require('./messages');
 
 let bot = null;
 
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+async function checkSessionTimeout(conv, chatId) {
+  if (conv.state !== 'idle' && conv.state !== 'payment_pending') {
+    const lastActivity = new Date(conv.updatedAt).getTime();
+    if (Date.now() - lastActivity > SESSION_TIMEOUT_MS) {
+      await conversationService.resetConversation(conv.id);
+      sendResponse(chatId, {
+        text: 'Your session expired after 30 minutes of inactivity.\n\nNo worries — just send your file again to start a new order.',
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Send a formatted response with optional inline keyboard.
  * Handles both callback buttons and URL buttons.
@@ -174,7 +190,11 @@ async function handleCallbackQuery(query) {
   const chatId = String(query.message.chat.id);
   const user = await getOrCreateUser(query.from);
 
-  const conv = await conversationService.getOrCreateConversation('telegram', chatId, user.id);
+  let conv = await conversationService.getOrCreateConversation('telegram', chatId, user.id);
+  if (await checkSessionTimeout(conv, chatId)) {
+    bot.answerCallbackQuery(query.id);
+    return;
+  }
 
   const result = await conversationService.handleMessage(conv, 'callback', {
     callback: query.data,
@@ -221,6 +241,7 @@ async function handleTextMessage(msg) {
   // Regular text — pass to state machine
   const user = await getOrCreateUser(msg.from);
   const conv = await conversationService.getOrCreateConversation('telegram', chatId, user.id);
+  if (await checkSessionTimeout(conv, chatId)) return;
 
   const result = await conversationService.handleMessage(conv, 'text', { text });
   return sendResponse(chatId, result.response);

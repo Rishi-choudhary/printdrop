@@ -74,7 +74,7 @@ async function convertToPdf(fileBuffer, fileName) {
     const formData = new FormData();
     formData.append('file', new Blob([fileBuffer]), fileName);
 
-    const res = await fetch(url, { method: 'POST', body: formData });
+    const res = await fetch(url, { method: 'POST', body: formData, signal: AbortSignal.timeout(30000) });
     if (!res.ok) {
       console.warn(`LibreOffice conversion failed: ${res.status}`);
       return null;

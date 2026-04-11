@@ -218,7 +218,8 @@ async function processJob(job, printer, { isRecovery = false } = {}) {
       } catch (err) {
         log(`Download attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`);
         if (attempt === MAX_RETRIES) {
-          log('All download attempts failed. Skipping job.');
+          log('All download attempts failed. Marking as cancelled.');
+          try { await updateJobStatus(job.id, 'cancelled'); } catch {}
           inFlight.delete(job.id);
           return;
         }

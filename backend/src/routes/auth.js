@@ -4,6 +4,11 @@ const config = require('../config');
 const { authenticate } = require('../middleware/auth');
 
 async function authRoutes(fastify, opts) {
+  // Per-phone rate limit for OTP sends: max 3 per phone per 10 minutes
+  const otpSendAttempts = new Map();
+  const OTP_SEND_MAX = 3;
+  const OTP_SEND_WINDOW_MS = 10 * 60 * 1000;
+
   /**
    * POST /auth/send-otp
    * Body: { phone: string }
@@ -19,6 +24,21 @@ async function authRoutes(fastify, opts) {
 
     // Normalize phone — ensure it starts with +
     const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
+
+    // Per-phone rate limit
+    const now = Date.now();
+    let sendAttempt = otpSendAttempts.get(normalizedPhone);
+    if (!sendAttempt || now > sendAttempt.resetAt) {
+      sendAttempt = { count: 0, resetAt: now + OTP_SEND_WINDOW_MS };
+      otpSendAttempts.set(normalizedPhone, sendAttempt);
+    }
+    sendAttempt.count++;
+    if (sendAttempt.count > OTP_SEND_MAX) {
+      const retryAfter = Math.ceil((sendAttempt.resetAt - now) / 1000);
+      return reply.status(429).send({
+        error: `Too many OTP requests. Please wait ${Math.ceil(retryAfter / 60)} minute(s).`,
+      });
+    }
 
     // Generate 6-digit OTP
     const code = crypto.randomInt(100000, 999999).toString();

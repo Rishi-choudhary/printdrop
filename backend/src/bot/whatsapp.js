@@ -197,7 +197,7 @@ async function handleWebhook(payload) {
     if (Date.now() - lastActivity > SESSION_TIMEOUT_MS) {
       await conversationService.resetConversation(conv.id);
       await sendResponse(phone, {
-        text: 'Your session timed out due to inactivity. Please send your file again to start a new order.',
+        text: 'Your session expired after 30 minutes of inactivity.\n\nNo worries — just send your file again to start a new order.',
       });
       conv = await conversationService.getOrCreateConversation('whatsapp', phone, user.id);
     }

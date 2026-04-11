@@ -208,6 +208,11 @@ async function handleConfirmation(conv, confirmed) {
   if (!ctx.shopId) throw new Error('No shop selected — context missing shopId');
   if (!ctx.fileUrl) throw new Error('No file URL — context missing fileUrl');
 
+  // Idempotency: if job already created (double-tap), return existing payment link
+  if (ctx.jobId && ctx.paymentLink) {
+    return { response: messages.paymentLinkMessage(ctx.paymentLink, ctx.paymentTotal || ctx.pricing?.total) };
+  }
+
   let job, pricing;
   try {
     ({ job, pricing } = await jobService.createJob({

@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Open+Sans:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Open+Sans:wght@400;500;600&display=swap');
 
 body {
   font-family: 'Open Sans', system-ui, -apple-system, sans-serif;
@@ -19,6 +19,15 @@ h1, h2, h3, h4, h5, h6 {
 }
 .animate-pulse-green {
   animation: pulse-green 2s ease-in-out infinite;
+}
+
+/* Toast slide-up animation */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(1rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slide-up 0.2s ease-out;
 }
 
 /* File preview iframe */

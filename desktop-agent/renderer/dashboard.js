@@ -14,6 +14,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.printdrop.onAgentError(({ message }) => {
     console.error('Agent error:', message);
   });
+
+  // Wire up buttons (no inline onclick — CSP blocks them)
+  document.getElementById('settingsBtn').addEventListener('click', () => window.printdrop.openSetup());
+  document.getElementById('closeBtn').addEventListener('click', () => window.close());
+  document.getElementById('openLogBtn').addEventListener('click', () => window.printdrop.openLog());
+  document.getElementById('footerSettingsBtn').addEventListener('click', () => window.printdrop.openSetup());
+  document.getElementById('quitBtn').addEventListener('click', () => window.printdrop.quit());
 });
 
 function closeWindow() {

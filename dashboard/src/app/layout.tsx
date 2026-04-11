@@ -1,5 +1,7 @@
 import './globals.css';
 import { AuthProvider } from '@/lib/auth';
+import { ToastProvider } from '@/components/ui/toast';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { Metadata, Viewport } from 'next';
 
 export const metadata: Metadata = {
@@ -45,7 +47,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </AuthProvider>
+        </ErrorBoundary>
         <ServiceWorkerRegistration />
       </body>
     </html>

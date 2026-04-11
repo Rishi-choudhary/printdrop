@@ -142,18 +142,21 @@ async function handlePaymentSuccess(razorpayPaymentId, razorpayPaymentLinkId) {
   }
 
   if (!payment) throw new Error('Payment record not found');
-  if (payment.status === 'paid') return { payment, justPaid: false }; // Already processed (idempotent)
+  if (payment.status === 'paid') return { payment, justPaid: false };
 
+  // Atomic update: only succeeds if status is still 'pending' (prevents double-processing)
   const now = new Date();
-
-  await prisma.payment.update({
-    where: { id: payment.id },
+  const { count } = await prisma.payment.updateMany({
+    where: { id: payment.id, status: 'pending' },
     data: {
       status: 'paid',
       razorpayPaymentId,
       paidAt: now,
     },
   });
+
+  // Another caller already processed this payment
+  if (count === 0) return { payment, justPaid: false };
 
   await prisma.job.update({
     where: { id: payment.jobId },
@@ -194,12 +197,27 @@ async function handlePaymentFailed(razorpayPaymentId, razorpayPaymentLinkId) {
     data: { status: 'cancelled', cancelledAt: new Date() },
   });
 
+  // Reset any conversation stuck in payment_pending for this user
+  await resetUserConversation(payment.userId);
+
   return payment;
 }
 
 /**
  * Initiate a refund via Razorpay.
  */
+async function resetUserConversation(userId) {
+  if (!userId) return;
+  try {
+    await prisma.conversation.updateMany({
+      where: { userId, state: 'payment_pending' },
+      data: { state: 'idle', context: '{}' },
+    });
+  } catch {
+    // Non-critical — best effort
+  }
+}
+
 async function initiateRefund(jobId, reason) {
   const payment = await prisma.payment.findUnique({
     where: { jobId },
@@ -222,6 +240,7 @@ async function initiateRefund(jobId, reason) {
       where: { id: jobId },
       data: { status: 'cancelled', cancelledAt: new Date() },
     });
+    await resetUserConversation(payment.userId);
     return { refundId: `mock_refund_${Date.now()}`, mock: true };
   }
 
@@ -241,6 +260,8 @@ async function initiateRefund(jobId, reason) {
     where: { id: jobId },
     data: { status: 'cancelled', cancelledAt: new Date() },
   });
+
+  await resetUserConversation(payment.userId);
 
   return { refundId: refund.id, mock: false };
 }

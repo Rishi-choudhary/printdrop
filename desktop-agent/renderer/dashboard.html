@@ -14,8 +14,8 @@
   <div class="status-dot" id="statusDot"></div>
   <div class="shop-name" id="shopName">PrintDrop Agent</div>
   <div class="last-poll" id="lastPoll">—</div>
-  <button class="close-btn" onclick="window.printdrop.openSetup()">⚙</button>
-  <button class="close-btn" onclick="closeWindow()">×</button>
+  <button class="close-btn" id="settingsBtn">⚙</button>
+  <button class="close-btn" id="closeBtn">×</button>
 </div>
 
 <!-- ── Stats ───────────────────────────────────────────────────────────────── -->
@@ -45,9 +45,9 @@
 
 <!-- ── Footer ──────────────────────────────────────────────────────────────── -->
 <div class="footer">
-  <button class="footer-btn" onclick="window.printdrop.openLog()">📄 Open Log</button>
-  <button class="footer-btn" onclick="window.printdrop.openSetup()">⚙ Settings</button>
-  <button class="footer-btn danger" onclick="window.printdrop.quit()">Quit</button>
+  <button class="footer-btn" id="openLogBtn">📄 Open Log</button>
+  <button class="footer-btn" id="footerSettingsBtn">⚙ Settings</button>
+  <button class="footer-btn danger" id="quitBtn">Quit</button>
 </div>
 
 <script src="dashboard.js"></script>

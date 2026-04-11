@@ -19,20 +19,7 @@ const STATUS_TIMESTAMP_MAP = {
   cancelled: 'cancelledAt',
 };
 
-async function getDailyToken(shopId) {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
-  const lastJob = await prisma.job.findFirst({
-    where: {
-      shopId,
-      createdAt: { gte: todayStart },
-    },
-    orderBy: { token: 'desc' },
-  });
-
-  return (lastJob?.token || 0) + 1;
-}
+const MAX_TOKEN_RETRIES = 3;
 
 async function createJob({
   userId, shopId, fileUrl, fileKey, fileName, fileSize, fileType,
@@ -52,36 +39,57 @@ async function createJob({
     binding,
   });
 
-  const token = await getDailyToken(shopId);
+  // Use serializable transaction to prevent duplicate tokens
+  for (let attempt = 0; attempt < MAX_TOKEN_RETRIES; attempt++) {
+    try {
+      const job = await prisma.$transaction(async (tx) => {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
 
-  const job = await prisma.job.create({
-    data: {
-      token,
-      userId,
-      shopId,
-      fileUrl,
-      fileKey: fileKey || null,
-      fileName,
-      fileSize: fileSize || 0,
-      fileType: fileType || 'pdf',
-      pageCount,
-      color: color || false,
-      copies: copies || 1,
-      doubleSided: doubleSided || false,
-      paperSize: paperSize || 'A4',
-      pageRange: pageRange || 'all',
-      binding: binding || 'none',
-      pricePerPage: pricing.pricePerPage,
-      totalPrice: pricing.total,
-      platformFee: pricing.platformFee,
-      shopEarning: pricing.shopEarning,
-      status: 'pending',
-      source: source || 'web',
-    },
-    include: { shop: true, user: true },
-  });
+        const lastJob = await tx.job.findFirst({
+          where: { shopId, createdAt: { gte: todayStart } },
+          orderBy: { token: 'desc' },
+        });
 
-  return { job, pricing };
+        const token = (lastJob?.token || 0) + 1;
+
+        return tx.job.create({
+          data: {
+            token,
+            userId,
+            shopId,
+            fileUrl,
+            fileKey: fileKey || null,
+            fileName,
+            fileSize: fileSize || 0,
+            fileType: fileType || 'pdf',
+            pageCount,
+            color: color || false,
+            copies: copies || 1,
+            doubleSided: doubleSided || false,
+            paperSize: paperSize || 'A4',
+            pageRange: pageRange || 'all',
+            binding: binding || 'none',
+            pricePerPage: pricing.pricePerPage,
+            totalPrice: pricing.total,
+            platformFee: pricing.platformFee,
+            shopEarning: pricing.shopEarning,
+            status: 'pending',
+            source: source || 'web',
+          },
+          include: { shop: true, user: true },
+        });
+      }, { isolationLevel: 'Serializable' });
+
+      return { job, pricing };
+    } catch (err) {
+      // Retry on serialization failure (P2034) or unique constraint (P2002)
+      if ((err.code === 'P2034' || err.code === 'P2002') && attempt < MAX_TOKEN_RETRIES - 1) {
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 async function updateJobStatus(jobId, newStatus, { printerId, printerName } = {}) {
@@ -165,5 +173,4 @@ module.exports = {
   getShopQueue,
   getJobsByUser,
   getJobByToken,
-  getDailyToken,
 };
