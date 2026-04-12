@@ -80,7 +80,7 @@ async function authRoutes(fastify, opts) {
           body: JSON.stringify(payload),
         });
         const smsData = await smsRes.json();
-        fastify.log.info({ smsData, mobile }, 'MSG91 OTP response');
+        fastify.log.warn({ smsData, mobile }, 'MSG91 OTP response');
         if (smsData.type !== 'success') {
           fastify.log.warn({ smsData }, 'MSG91 OTP send failed');
           // If MSG91 fails, return error instead of silently succeeding
