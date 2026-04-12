@@ -40,50 +40,30 @@ async function authRoutes(fastify, opts) {
       });
     }
 
-    // Generate 6-digit OTP
-    const code = crypto.randomInt(100000, 999999).toString();
-    const expiresAt = new Date(Date.now() + config.otp.expiryMinutes * 60 * 1000);
-
-    // Invalidate any existing unused OTPs for this phone
-    await fastify.prisma.oTP.updateMany({
-      where: { phone: normalizedPhone, verified: false },
-      data: { verified: true },
-    });
-
-    // Store new OTP
-    await fastify.prisma.oTP.create({
-      data: {
-        phone: normalizedPhone,
-        code,
-        expiresAt,
-      },
-    });
-
-    // Send OTP via SMS
+    // Send OTP via MSG91 (MSG91 generates and manages the OTP)
     if (config.msg91.authKey) {
       try {
         const mobile = normalizedPhone.replace('+', '');
-        const payload = {
-          template_id: config.msg91.templateId,
-          mobile,
-          otp: code,
-        };
-        // Remove template_id if not set — MSG91 SendOTP API can work without it
-        if (!payload.template_id) delete payload.template_id;
 
-        const smsRes = await fetch('https://control.msg91.com/api/v5/otp', {
+        // MSG91 SendOTP API — use query params format
+        const params = new URLSearchParams({
+          mobile,
+          ...(config.msg91.templateId && { template_id: config.msg91.templateId }),
+          ...(config.msg91.senderId && { sender_id: config.msg91.senderId }),
+          otp_length: '6',
+          otp_expiry: String(config.otp.expiryMinutes),
+        });
+
+        const smsRes = await fetch(`https://control.msg91.com/api/v5/otp?${params}`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             authkey: config.msg91.authKey,
           },
-          body: JSON.stringify(payload),
         });
         const smsData = await smsRes.json();
         fastify.log.warn({ smsData, mobile }, 'MSG91 OTP response');
         if (smsData.type !== 'success') {
           fastify.log.warn({ smsData }, 'MSG91 OTP send failed');
-          // If MSG91 fails, return error instead of silently succeeding
           if (!config.isDev) {
             return reply.status(503).send({ error: `OTP delivery failed: ${smsData.message || 'Unknown error'}` });
           }
@@ -96,15 +76,24 @@ async function authRoutes(fastify, opts) {
       }
     }
 
-    // In production without MSG91, refuse to silently expose OTPs
+    // In production without MSG91, refuse
     if (!config.isDev && !config.msg91.authKey) {
       return reply.status(503).send({ error: 'SMS service not configured. Set MSG91_AUTH_KEY in production.' });
     }
 
     const response = { success: true, message: 'OTP sent successfully' };
 
-    // In dev mode only (MSG91 not configured), include the OTP in the response
+    // In dev mode only (MSG91 not configured), generate local OTP for testing
     if (config.isDev && !config.msg91.authKey) {
+      const code = crypto.randomInt(100000, 999999).toString();
+      const expiresAt = new Date(Date.now() + config.otp.expiryMinutes * 60 * 1000);
+      await fastify.prisma.oTP.updateMany({
+        where: { phone: normalizedPhone, verified: false },
+        data: { verified: true },
+      });
+      await fastify.prisma.oTP.create({
+        data: { phone: normalizedPhone, code, expiresAt },
+      });
       response.otp = code;
     }
 
@@ -147,29 +136,49 @@ async function authRoutes(fastify, opts) {
       });
     }
 
-    // Find a valid, unexpired, unverified OTP
-    const otp = await fastify.prisma.oTP.findFirst({
-      where: {
-        phone: normalizedPhone,
-        code: String(code),
-        verified: false,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    // Verify OTP — use MSG91 verify API when configured, else check local DB
+    if (config.msg91.authKey) {
+      try {
+        const mobile = normalizedPhone.replace('+', '');
+        const params = new URLSearchParams({ mobile, otp: String(code) });
+        const verifyRes = await fetch(`https://control.msg91.com/api/v5/otp/verify?${params}`, {
+          method: 'POST',
+          headers: { authkey: config.msg91.authKey },
+        });
+        const verifyData = await verifyRes.json();
+        fastify.log.warn({ verifyData, mobile }, 'MSG91 OTP verify response');
+        if (verifyData.type !== 'success') {
+          return reply.status(400).send({ error: verifyData.message || 'Invalid or expired OTP' });
+        }
+      } catch (err) {
+        fastify.log.error({ err }, 'MSG91 verify error');
+        return reply.status(503).send({ error: 'OTP verification service error. Please try again.' });
+      }
+    } else {
+      // Local DB verification (dev mode without MSG91)
+      const otp = await fastify.prisma.oTP.findFirst({
+        where: {
+          phone: normalizedPhone,
+          code: String(code),
+          verified: false,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
 
-    if (!otp) {
-      return reply.status(400).send({ error: 'Invalid or expired OTP' });
+      if (!otp) {
+        return reply.status(400).send({ error: 'Invalid or expired OTP' });
+      }
+
+      // Mark OTP as verified
+      await fastify.prisma.oTP.update({
+        where: { id: otp.id },
+        data: { verified: true },
+      });
     }
 
     // Clear rate limit on success
     otpVerifyAttempts.delete(key);
-
-    // Mark OTP as verified
-    await fastify.prisma.oTP.update({
-      where: { id: otp.id },
-      data: { verified: true },
-    });
 
     // Find or create user
     let user = await fastify.prisma.user.findUnique({
