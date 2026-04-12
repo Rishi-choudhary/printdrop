@@ -60,27 +60,39 @@ async function authRoutes(fastify, opts) {
     });
 
     // Send OTP via SMS
-    if (!config.isDev && config.msg91.authKey) {
+    if (config.msg91.authKey) {
       try {
+        const mobile = normalizedPhone.replace('+', '');
+        const payload = {
+          template_id: config.msg91.templateId,
+          mobile,
+          otp: code,
+        };
+        // Remove template_id if not set — MSG91 SendOTP API can work without it
+        if (!payload.template_id) delete payload.template_id;
+
         const smsRes = await fetch('https://control.msg91.com/api/v5/otp', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             authkey: config.msg91.authKey,
           },
-          body: JSON.stringify({
-            template_id: config.msg91.templateId,
-            mobile: normalizedPhone.replace('+', ''),
-            otp: code,
-          }),
+          body: JSON.stringify(payload),
         });
         const smsData = await smsRes.json();
+        fastify.log.info({ smsData, mobile }, 'MSG91 OTP response');
         if (smsData.type !== 'success') {
           fastify.log.warn({ smsData }, 'MSG91 OTP send failed');
+          // If MSG91 fails, return error instead of silently succeeding
+          if (!config.isDev) {
+            return reply.status(503).send({ error: `OTP delivery failed: ${smsData.message || 'Unknown error'}` });
+          }
         }
       } catch (err) {
         fastify.log.error({ err }, 'MSG91 SMS error');
-        // Don't block the response — OTP is already in DB
+        if (!config.isDev) {
+          return reply.status(503).send({ error: 'SMS service error. Please try again.' });
+        }
       }
     }
 
