@@ -1,4 +1,5 @@
 FROM node:20-slim AS base
+LABEL service="printdrop-dashboard"
 WORKDIR /app
 
 # Install dependencies
