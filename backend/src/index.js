@@ -34,8 +34,8 @@ async function buildServer() {
     origin: (origin, cb) => {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
       if (!origin) return cb(null, true);
-      // Allow configured origins and any *.railway.app domain
-      if (allowedOrigins.includes(origin) || origin.endsWith('.railway.app')) {
+      // Allow configured origins and any *.railway.app / *.vercel.app domain
+      if (allowedOrigins.includes(origin) || origin.endsWith('.railway.app') || origin.endsWith('.vercel.app')) {
         return cb(null, true);
       }
       cb(new Error('Not allowed by CORS'), false);

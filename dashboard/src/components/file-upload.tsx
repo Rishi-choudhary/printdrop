@@ -16,7 +16,7 @@ import { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import Cookies from 'js-cookie';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+const API_BASE = '/api';
 
 const ACCEPTED = ['application/pdf', 'image/jpeg', 'image/png',
   'application/msword',

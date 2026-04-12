@@ -1,6 +1,7 @@
 import Cookies from 'js-cookie';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+// Always use relative /api path — Vercel/Next.js rewrites proxy to the backend
+const API_BASE = '/api';
 
 export async function apiFetch<T = any>(
   path: string,
