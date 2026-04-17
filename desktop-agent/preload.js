@@ -18,11 +18,8 @@ contextBridge.exposeInMainWorld('printdrop', {
   saveConfig: (cfg) =>
     ipcRenderer.invoke('wizard:save-config', cfg),
 
-  testPrint: (agentKey, apiUrl) =>
-    ipcRenderer.invoke('wizard:test-print', { agentKey, apiUrl }),
-
-  checkJob: (jobId, agentKey, apiUrl) =>
-    ipcRenderer.invoke('wizard:check-job', { jobId, agentKey, apiUrl }),
+  testPrint: (printerName, color) =>
+    ipcRenderer.invoke('wizard:test-print', { printerName, color }),
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
 

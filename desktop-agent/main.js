@@ -346,31 +346,57 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('wizard:test-print', async (_e, { agentKey: key, apiUrl }) => {
+  ipcMain.handle('wizard:test-print', async (_e, { printerName, color }) => {
+    // Print a test page DIRECTLY — no backend job queue needed.
+    // This works during first-time setup before the agent polling loop starts.
     try {
-      // Get shopId from heartbeat
-      const hbRes = await fetch(`${apiUrl}/api/printers/heartbeat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ printers: [] }),
-      });
-      if (!hbRes.ok) return { ok: false, error: `Auth failed (${hbRes.status})` };
-      const hbData = await hbRes.json();
-      const shopId = hbData.shopId;
-      if (!shopId) return { ok: false, error: 'Could not determine shop ID' };
+      const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+      const { printFile } = require('./src/printer');
+      const os = require('os');
 
-      // Create test print job
-      const tpRes = await fetch(`${apiUrl}/api/shops/${shopId}/test-print`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify({}),
+      // Generate a simple test page
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([595, 842]); // A4
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+      page.drawText('PrintDrop — Test Page', {
+        x: 50, y: 760, size: 28, font: boldFont, color: rgb(0.07, 0.47, 0.95),
       });
-      if (!tpRes.ok) {
-        const body = await tpRes.text().catch(() => '');
-        return { ok: false, error: `Failed to create test job: ${body}` };
+      page.drawText(`Printer: ${printerName || 'System Default'}`, {
+        x: 50, y: 710, size: 14, font,
+      });
+      page.drawText(`Mode: ${color ? 'Color' : 'Black & White'}`, {
+        x: 50, y: 688, size: 14, font,
+      });
+      page.drawText(`Date: ${new Date().toLocaleString()}`, {
+        x: 50, y: 666, size: 12, font,
+      });
+      page.drawText('If you can read this, your printer is configured correctly.', {
+        x: 50, y: 620, size: 13, font,
+      });
+      page.drawRectangle({ x: 48, y: 608, width: 320, height: 1.5, color: rgb(0.8, 0.8, 0.8) });
+      page.drawText('PrintDrop — Smart Print Shop Automation', {
+        x: 50, y: 594, size: 10, font, color: rgb(0.5, 0.5, 0.5),
+      });
+
+      const pdfBytes = await pdfDoc.save();
+      const tmpPath = path.join(os.tmpdir(), `printdrop-test-${Date.now()}.pdf`);
+      fs.writeFileSync(tmpPath, pdfBytes);
+
+      try {
+        const result = await printFile(tmpPath, {
+          printerName: printerName || '',
+          copies: 1,
+          doubleSided: false,
+          color: !!color,
+          paperSize: 'A4',
+          simulate: false,
+        });
+        return { ok: true, output: result.output };
+      } finally {
+        fs.unlink(tmpPath, () => {});
       }
-      const tpData = await tpRes.json();
-      return { ok: true, jobId: tpData.job?.id };
     } catch (err) {
       return { ok: false, error: err.message };
     }

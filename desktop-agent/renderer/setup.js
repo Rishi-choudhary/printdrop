@@ -189,48 +189,29 @@ function setupTestPrint() {
 
   testBtn.addEventListener('click', async () => {
     testBtn.disabled = true;
-    testBtn.textContent = 'Sending…';
+    testBtn.textContent = 'Printing…';
     statusEl.className = 'banner';
-    statusEl.textContent = 'Sending test print job…';
+    statusEl.textContent = 'Sending test page to printer…';
     statusEl.classList.remove('hidden');
 
-    const result = await window.printdrop.testPrint(wizardData.agentKey, wizardData.apiUrl);
+    // Direct local print — no backend job queue, works before agent polling starts
+    const result = await window.printdrop.testPrint(
+      wizardData.bwPrinterSystemName,
+      false, // B&W test
+    );
 
     if (!result.ok) {
       statusEl.className = 'banner error';
-      statusEl.textContent = result.error || 'Failed to send test print.';
+      statusEl.textContent = result.error || 'Print failed. Check printer connection and drivers.';
       testBtn.disabled = false;
       testBtn.textContent = '🖨️ Retry Test Print';
       return;
     }
 
-    statusEl.className = 'banner';
-    statusEl.textContent = 'Test job sent! Waiting for printer…';
-
-    // Poll for completion (max 30 attempts, 2s each)
-    let attempts = 0;
-    const pollInterval = setInterval(async () => {
-      attempts++;
-      const check = await window.printdrop.checkJob(result.jobId, wizardData.agentKey, wizardData.apiUrl);
-      if (check.status === 'ready' || check.status === 'picked_up') {
-        clearInterval(pollInterval);
-        statusEl.className = 'banner success';
-        statusEl.textContent = 'Test print successful! Check your printer.';
-        testBtn.style.display = 'none';
-      } else if (check.status === 'cancelled') {
-        clearInterval(pollInterval);
-        statusEl.className = 'banner error';
-        statusEl.textContent = 'Test print failed. Check printer connection.';
-        testBtn.disabled = false;
-        testBtn.textContent = '🖨️ Retry Test Print';
-      } else if (attempts >= 30) {
-        clearInterval(pollInterval);
-        statusEl.className = 'banner error';
-        statusEl.textContent = 'Timed out. The agent may not be running yet — you can test later.';
-        testBtn.disabled = false;
-        testBtn.textContent = '🖨️ Retry Test Print';
-      }
-    }, 2000);
+    statusEl.className = 'banner success';
+    statusEl.textContent = '✓ Test page sent! Check your printer for output.';
+    testBtn.textContent = '🖨️ Print Again';
+    testBtn.disabled = false;
   });
 }
 
