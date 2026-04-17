@@ -347,56 +347,12 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('wizard:test-print', async (_e, { printerName, color }) => {
-    // Print a test page DIRECTLY — no backend job queue needed.
-    // This works during first-time setup before the agent polling loop starts.
+    // Uses printTestPage() which prints a plain HTML page — no PDF rendering,
+    // no external tools, works instantly on any Windows setup.
     try {
-      const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-      const { printFile } = require('./src/printer');
-      const os = require('os');
-
-      // Generate a simple test page
-      const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage([595, 842]); // A4
-      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-      page.drawText('PrintDrop — Test Page', {
-        x: 50, y: 760, size: 28, font: boldFont, color: rgb(0.07, 0.47, 0.95),
-      });
-      page.drawText(`Printer: ${printerName || 'System Default'}`, {
-        x: 50, y: 710, size: 14, font,
-      });
-      page.drawText(`Mode: ${color ? 'Color' : 'Black & White'}`, {
-        x: 50, y: 688, size: 14, font,
-      });
-      page.drawText(`Date: ${new Date().toLocaleString()}`, {
-        x: 50, y: 666, size: 12, font,
-      });
-      page.drawText('If you can read this, your printer is configured correctly.', {
-        x: 50, y: 620, size: 13, font,
-      });
-      page.drawRectangle({ x: 48, y: 608, width: 320, height: 1.5, color: rgb(0.8, 0.8, 0.8) });
-      page.drawText('PrintDrop — Smart Print Shop Automation', {
-        x: 50, y: 594, size: 10, font, color: rgb(0.5, 0.5, 0.5),
-      });
-
-      const pdfBytes = await pdfDoc.save();
-      const tmpPath = path.join(os.tmpdir(), `printdrop-test-${Date.now()}.pdf`);
-      fs.writeFileSync(tmpPath, pdfBytes);
-
-      try {
-        const result = await printFile(tmpPath, {
-          printerName: printerName || '',
-          copies: 1,
-          doubleSided: false,
-          color: !!color,
-          paperSize: 'A4',
-          simulate: false,
-        });
-        return { ok: true, output: result.output };
-      } finally {
-        fs.unlink(tmpPath, () => {});
-      }
+      const { printTestPage } = require('./src/printer');
+      const result = await printTestPage(printerName, color);
+      return { ok: true, output: result.output };
     } catch (err) {
       return { ok: false, error: err.message };
     }
