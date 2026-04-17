@@ -97,36 +97,35 @@ function printWithLp(filePath, { printerName, copies, doubleSided, color, paperS
 }
 
 // ─── Windows — Electron webContents.print() ──────────────────────────────────
-// Reliable: uses Chromium's built-in PDF rendering + native print subsystem.
-// No SumatraPDF or external tools needed.
+// Uses Chromium's built-in PDF rendering + native Windows print subsystem.
+// No SumatraPDF or external tools required.
 function printOnWindows(filePath, { printerName, copies, doubleSided, color, paperSize }) {
   const { BrowserWindow } = require('electron');
 
   return new Promise((resolve, reject) => {
+    const sizeMb = (fs.statSync(filePath).size / 1024 / 1024).toFixed(2);
+    log(`[print] File: ${path.basename(filePath)} (${sizeMb} MB) → printer: "${printerName || 'default'}"`);
+
     const win = new BrowserWindow({
       show: false,
-      width: 800,
+      width: 850,
       height: 1100,
       webPreferences: {
-        plugins: true,          // Required for PDF plugin
+        plugins: true,     // enables built-in Chromium PDF viewer
         javascript: true,
       },
     });
 
-    // Load PDF as base64 data URI — avoids file:// permission issues on Windows
-    const pdfData = fs.readFileSync(filePath);
-    const base64 = pdfData.toString('base64');
-    const dataUrl = `data:application/pdf;base64,${base64}`;
-
-    log(`[print] Loading PDF (${(pdfData.length / 1024).toFixed(1)} KB) → printer: ${printerName || 'default'}`);
-
-    win.loadURL(dataUrl);
+    // Use file:// URL — no size limit unlike data URIs (which cap at ~2 MB in Chrome).
+    // Forward slashes required on Windows for file:// URLs.
+    const fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
+    win.loadURL(fileUrl);
 
     win.webContents.once('did-finish-load', () => {
-      // Wait for Chromium's PDF viewer to fully render before printing.
-      // 3s is conservative but reliable across document sizes.
+      // Chromium's PDF viewer plugin renders asynchronously after did-finish-load.
+      // 3s covers even large multi-page PDFs at typical CPU speeds.
       const renderWait = 3000;
-      log(`[print] PDF loaded — waiting ${renderWait}ms for render...`);
+      log(`[print] PDF loaded in renderer — waiting ${renderWait}ms for render...`);
 
       setTimeout(() => {
         const printOpts = {
@@ -141,37 +140,36 @@ function printOnWindows(filePath, { printerName, copies, doubleSided, color, pap
           pageSize: paperSize || 'A4',
         };
 
-        log(`[print] Sending to spooler — duplex=${doubleSided} color=${color} copies=${copies}`);
+        log(`[print] Submitting — copies=${copies} duplex=${doubleSided} color=${color} paper=${paperSize}`);
 
         win.webContents.print(printOpts, (success, failureReason) => {
           if (!success) {
-            win.close();
-            return reject(new Error(`Print failed: ${failureReason || 'unknown'}`));
+            if (!win.isDestroyed()) win.close();
+            return reject(new Error(`Spooler rejected: ${failureReason || 'unknown reason'}`));
           }
 
-          log(`[print] Accepted by spooler — waiting for data flush...`);
+          log('[print] Spooler accepted job — holding window open for data flush (5s)...');
 
-          // IMPORTANT: do NOT close the window immediately.
-          // The print spooler reads from the renderer — closing too early
-          // sends a blank/truncated job. Wait 5s before closing.
+          // Do NOT close the window immediately after spooler accepts.
+          // Chromium streams PDF data to the spooler; closing too early truncates it.
           setTimeout(() => {
             if (!win.isDestroyed()) win.close();
-            resolve({ success: true, output: `Sent to ${printerName || 'default printer'}` });
+            resolve({ success: true, output: `Printed to "${printerName || 'default printer'}"` });
           }, 5000);
         });
       }, renderWait);
     });
 
     win.webContents.once('did-fail-load', (_e, code, desc) => {
-      win.close();
-      reject(new Error(`Failed to load PDF (${code}): ${desc}`));
+      if (!win.isDestroyed()) win.close();
+      reject(new Error(`PDF load failed (${code}): ${desc} — path: ${filePath}`));
     });
 
-    // Hard timeout — if something hangs, fail cleanly
+    // Safety net: 90s hard timeout
     setTimeout(() => {
       if (!win.isDestroyed()) {
         win.close();
-        reject(new Error('Print timeout (90s) — check printer is online and has paper'));
+        reject(new Error('Print timeout (90s) — is the printer online?'));
       }
     }, 90000);
   });
