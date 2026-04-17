@@ -129,7 +129,13 @@ function printOnWindows(filePath, { printerName, copies, doubleSided, color, pap
       log(`[print] Serving PDF on ${pdfUrl}`);
 
       win = new BrowserWindow({
+        // Position far off-screen so it is never visible to the user,
+        // but show: true is required — Chromium's PDF plugin does NOT
+        // initialize its GPU compositor in a show:false / hidden window,
+        // which causes the spooler to receive a blank print job.
         show: false,
+        x: -9999,
+        y: -9999,
         width: 850,
         height: 1100,
         webPreferences: {
@@ -141,9 +147,15 @@ function printOnWindows(filePath, { printerName, copies, doubleSided, color, pap
       win.loadURL(pdfUrl);
 
       win.webContents.once('did-finish-load', () => {
+        // Reveal the window off-screen so the GPU compositor activates and
+        // the PDF plugin renders. Without this, webContents.print() sends
+        // a blank job even though the spooler reports success.
+        win.setPosition(-9999, -9999);
+        win.showInactive(); // show without stealing focus
+
         // Chromium's PDF viewer plugin renders asynchronously after did-finish-load.
-        // 3s covers even large multi-page PDFs at typical CPU speeds.
-        const renderWait = 3000;
+        // 5s covers even large multi-page PDFs at typical CPU speeds.
+        const renderWait = 5000;
         log(`[print] PDF loaded in renderer — waiting ${renderWait}ms for render...`);
 
         setTimeout(() => {
