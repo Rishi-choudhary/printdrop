@@ -283,8 +283,27 @@ async function startTelegramBot(fastify) {
     });
   } else {
     // Polling mode for development
-    bot = new TelegramBot(config.telegram.botToken, { polling: true });
+    // Delete any stale webhook before polling (prevents 409 if previously set)
+    const tempBot = new TelegramBot(config.telegram.botToken);
+    try { await tempBot.deleteWebHook(); } catch {}
+
+    bot = new TelegramBot(config.telegram.botToken, {
+      polling: { interval: 1000, autoStart: true, params: { timeout: 10 } },
+    });
     console.log('Telegram bot started in polling mode');
+
+    // Handle 409 Conflict (another instance already polling) — stop and retry
+    bot.on('polling_error', (err) => {
+      if (err.code === 'ETELEGRAM' && err.message?.includes('409')) {
+        console.warn('[Telegram] 409 Conflict — another instance running. Stopping poll, retrying in 15s...');
+        bot.stopPolling().then(() => {
+          setTimeout(() => {
+            bot.startPolling({ restart: false }).catch(() => {});
+          }, 15000);
+        }).catch(() => {});
+      }
+      // Other errors (network, etc.) are handled by the library's built-in retry
+    });
   }
 
   // Store bot reference for notifications
