@@ -70,11 +70,6 @@ const config = {
 
   adminPhone: process.env.ADMIN_PHONE || '+919999999999',
 
-  msg91: {
-    authKey: process.env.MSG91_AUTH_KEY || '',
-    templateId: process.env.MSG91_TEMPLATE_ID || '',
-    senderId: process.env.MSG91_SENDER_ID || 'PRNTDP',
-  },
 };
 
 module.exports = config;

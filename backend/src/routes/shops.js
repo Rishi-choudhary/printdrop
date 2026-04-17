@@ -50,6 +50,101 @@ async function shopRoutes(fastify) {
     return reply.code(201).send(shop);
   });
 
+  // POST /shops/register — self-service shop registration (any authenticated user)
+  fastify.post('/register', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const { name, address, phone } = request.body;
+
+    if (!name) {
+      return reply.code(400).send({ error: 'Shop name is required' });
+    }
+
+    // Check if user already owns a shop
+    const existingShop = await fastify.prisma.shop.findUnique({
+      where: { ownerId: request.user.id },
+    });
+    if (existingShop) {
+      return reply.code(400).send({ error: 'You already own a shop', shopId: existingShop.id });
+    }
+
+    // Create shop and promote user to shopkeeper
+    const agentKey = `agent_${crypto.randomBytes(20).toString('hex')}`;
+
+    const shop = await fastify.prisma.$transaction(async (tx) => {
+      const newShop = await tx.shop.create({
+        data: {
+          name,
+          address: address || '',
+          phone: phone || request.user.phone,
+          ownerId: request.user.id,
+          agentKey,
+        },
+        include: { owner: { select: { id: true, name: true, phone: true } } },
+      });
+
+      await tx.user.update({
+        where: { id: request.user.id },
+        data: { role: 'shopkeeper' },
+      });
+
+      return newShop;
+    });
+
+    return reply.code(201).send({ shop, agentKey });
+  });
+
+  // POST /shops/:id/test-print — send a test print job (shopkeeper or admin)
+  fastify.post('/:id/test-print', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const shop = await shopService.getShopById(request.params.id);
+    if (!shop) return reply.code(404).send({ error: 'Shop not found' });
+
+    if (request.user.role !== 'admin' && shop.ownerId !== request.user.id) {
+      return reply.code(403).send({ error: 'Not authorized' });
+    }
+
+    // Create a test job that goes directly to queued (no payment needed)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const lastJob = await fastify.prisma.job.findFirst({
+      where: { shopId: shop.id, createdAt: { gte: todayStart } },
+      orderBy: { token: 'desc' },
+    });
+    const token = (lastJob?.token || 0) + 1;
+
+    const job = await fastify.prisma.job.create({
+      data: {
+        token,
+        userId: request.user.id,
+        shopId: shop.id,
+        fileName: 'PrintDrop-Test-Page.pdf',
+        fileUrl: '',
+        fileKey: null,
+        fileSize: 0,
+        fileType: 'pdf',
+        pageCount: 1,
+        color: false,
+        copies: 1,
+        doubleSided: false,
+        paperSize: 'A4',
+        pageRange: 'all',
+        binding: 'none',
+        pricePerPage: 0,
+        totalPrice: 0,
+        platformFee: 0,
+        shopEarning: 0,
+        status: 'queued',
+        source: 'test',
+        paidAt: new Date(),
+      },
+    });
+
+    return reply.code(201).send({ job, message: 'Test print job created' });
+  });
+
   // PATCH /shops/:id — update shop (owner or admin)
   fastify.patch('/:id', {
     preHandler: [authenticate],

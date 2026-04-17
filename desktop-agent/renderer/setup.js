@@ -1,7 +1,7 @@
 'use strict';
 
 let currentStep = 1;
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 // State accumulated across steps
 const wizardData = {
@@ -32,7 +32,8 @@ function updateNextButton(step) {
     1: 'Validate & Connect',
     2: 'Continue',
     3: 'Continue',
-    4: 'Finish Setup',
+    4: 'Continue',
+    5: 'Finish Setup',
   };
   btn.textContent = labels[step] || 'Next';
 }
@@ -48,7 +49,8 @@ async function goNext() {
   if (currentStep === 1) await handleStep1();
   else if (currentStep === 2) handleStep2();
   else if (currentStep === 3) handleStep3();
-  else if (currentStep === 4) await handleStep4();
+  else if (currentStep === 4) handleStep4Move();
+  else if (currentStep === 5) await handleStep5();
 }
 
 // ── Step 1: Validate key ──────────────────────────────────────────────────────
@@ -171,9 +173,68 @@ function handleStep3() {
   showStep(4);
 }
 
-// ── Step 4: Save config ───────────────────────────────────────────────────────
+// ── Step 4 → 5: Move to test print ───────────────────────────────────────────
 
-async function handleStep4() {
+function handleStep4Move() {
+  currentStep = 5;
+  showStep(5);
+  setupTestPrint();
+}
+
+// ── Step 5: Test print + Save config ─────────────────────────────────────────
+
+function setupTestPrint() {
+  const testBtn = document.getElementById('testPrintBtn');
+  const statusEl = document.getElementById('testPrintStatus');
+
+  testBtn.addEventListener('click', async () => {
+    testBtn.disabled = true;
+    testBtn.textContent = 'Sending…';
+    statusEl.className = 'banner';
+    statusEl.textContent = 'Sending test print job…';
+    statusEl.classList.remove('hidden');
+
+    const result = await window.printdrop.testPrint(wizardData.agentKey, wizardData.apiUrl);
+
+    if (!result.ok) {
+      statusEl.className = 'banner error';
+      statusEl.textContent = result.error || 'Failed to send test print.';
+      testBtn.disabled = false;
+      testBtn.textContent = '🖨️ Retry Test Print';
+      return;
+    }
+
+    statusEl.className = 'banner';
+    statusEl.textContent = 'Test job sent! Waiting for printer…';
+
+    // Poll for completion (max 30 attempts, 2s each)
+    let attempts = 0;
+    const pollInterval = setInterval(async () => {
+      attempts++;
+      const check = await window.printdrop.checkJob(result.jobId, wizardData.agentKey, wizardData.apiUrl);
+      if (check.status === 'ready' || check.status === 'picked_up') {
+        clearInterval(pollInterval);
+        statusEl.className = 'banner success';
+        statusEl.textContent = 'Test print successful! Check your printer.';
+        testBtn.style.display = 'none';
+      } else if (check.status === 'cancelled') {
+        clearInterval(pollInterval);
+        statusEl.className = 'banner error';
+        statusEl.textContent = 'Test print failed. Check printer connection.';
+        testBtn.disabled = false;
+        testBtn.textContent = '🖨️ Retry Test Print';
+      } else if (attempts >= 30) {
+        clearInterval(pollInterval);
+        statusEl.className = 'banner error';
+        statusEl.textContent = 'Timed out. The agent may not be running yet — you can test later.';
+        testBtn.disabled = false;
+        testBtn.textContent = '🖨️ Retry Test Print';
+      }
+    }, 2000);
+  });
+}
+
+async function handleStep5() {
   const btn = document.getElementById('nextBtn');
   btn.disabled = true;
   btn.textContent = 'Saving…';
@@ -194,7 +255,7 @@ async function handleStep4() {
 
   if (!result.ok) {
     btn.disabled = false;
-    updateNextButton(4);
+    updateNextButton(5);
     alert('Setup failed. Please try again.');
   }
   // Main process closes this window on success

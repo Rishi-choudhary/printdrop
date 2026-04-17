@@ -66,6 +66,7 @@ let tray = null;
 let setupWin = null;
 let dashboardWin = null;
 let agentStarted = false;
+let dashboardPinned = false;
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
@@ -196,7 +197,7 @@ function createDashboardWindow() {
   });
 
   dashboardWin.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
-  dashboardWin.on('blur', () => dashboardWin?.hide());
+  dashboardWin.on('blur', () => { if (!dashboardPinned) dashboardWin?.hide(); });
   dashboardWin.on('closed', () => { dashboardWin = null; });
 }
 
@@ -345,6 +346,49 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('wizard:test-print', async (_e, { agentKey: key, apiUrl }) => {
+    try {
+      // Get shopId from heartbeat
+      const hbRes = await fetch(`${apiUrl}/api/printers/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ printers: [] }),
+      });
+      if (!hbRes.ok) return { ok: false, error: `Auth failed (${hbRes.status})` };
+      const hbData = await hbRes.json();
+      const shopId = hbData.shopId;
+      if (!shopId) return { ok: false, error: 'Could not determine shop ID' };
+
+      // Create test print job
+      const tpRes = await fetch(`${apiUrl}/api/shops/${shopId}/test-print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({}),
+      });
+      if (!tpRes.ok) {
+        const body = await tpRes.text().catch(() => '');
+        return { ok: false, error: `Failed to create test job: ${body}` };
+      }
+      const tpData = await tpRes.json();
+      return { ok: true, jobId: tpData.job?.id };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('wizard:check-job', async (_e, { jobId, agentKey: key, apiUrl }) => {
+    try {
+      const res = await fetch(`${apiUrl}/api/jobs/${jobId}`, {
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) return { status: 'unknown' };
+      const job = await res.json();
+      return { status: job.status };
+    } catch {
+      return { status: 'unknown' };
+    }
+  });
+
   ipcMain.handle('wizard:save-config', async (_e, cfg) => {
     config.save({ ...cfg, setupComplete: true });
 
@@ -374,6 +418,14 @@ function registerIpcHandlers() {
   });
 
   // ── App actions ────────────────────────────────────────────────────────
+
+  ipcMain.handle('dashboard:toggle-pin', () => {
+    dashboardPinned = !dashboardPinned;
+    if (dashboardWin && !dashboardWin.isDestroyed()) {
+      dashboardWin.setAlwaysOnTop(dashboardPinned);
+    }
+    return { pinned: dashboardPinned };
+  });
 
   ipcMain.handle('app:open-log', () => {
     const logPath = path.join(app.getPath('userData'), 'logs', 'agent.log');

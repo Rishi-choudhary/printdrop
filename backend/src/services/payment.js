@@ -61,7 +61,7 @@ async function createPaymentLink({ jobId, amount, customerPhone, customerName, d
       sms: !!phone,
       email: false,
     },
-    callback_url: `${config.frontendUrl}/payment/success?job_id=${jobId}`,
+    callback_url: `${config.frontendUrl}/thankyou?job_id=${jobId}`,
     callback_method: 'get',
     expire_by: Math.floor(Date.now() / 1000) + 1800, // 30 min expiry
     notes: {

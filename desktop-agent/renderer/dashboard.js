@@ -21,6 +21,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('openLogBtn').addEventListener('click', () => window.printdrop.openLog());
   document.getElementById('footerSettingsBtn').addEventListener('click', () => window.printdrop.openSetup());
   document.getElementById('quitBtn').addEventListener('click', () => window.printdrop.quit());
+
+  // Pin toggle
+  const pinBtn = document.getElementById('pinBtn');
+  pinBtn.addEventListener('click', async () => {
+    const result = await window.printdrop.togglePin();
+    pinBtn.textContent = result.pinned ? '📍' : '📌';
+    pinBtn.title = result.pinned ? 'Unpin window' : 'Pin window';
+  });
 });
 
 function closeWindow() {

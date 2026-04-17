@@ -166,9 +166,31 @@ async function getJobByToken(shopId, token) {
   });
 }
 
+/**
+ * Atomically claim a queued job for printing.
+ * Uses updateMany with WHERE status='queued' so only one agent can claim it.
+ * Returns true if claimed, false if already taken by another agent.
+ */
+async function claimJob(jobId, { printerName, printerId } = {}) {
+  const updateData = {
+    status: 'printing',
+    printedAt: new Date(),
+  };
+  if (printerName) updateData.printerName = printerName;
+  if (printerId) updateData.printerId = printerId;
+
+  const result = await prisma.job.updateMany({
+    where: { id: jobId, status: 'queued' },
+    data: updateData,
+  });
+
+  return result.count > 0;
+}
+
 module.exports = {
   createJob,
   updateJobStatus,
+  claimJob,
   getShopQueue,
   getJobsByUser,
   getJobByToken,

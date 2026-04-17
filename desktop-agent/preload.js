@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld('printdrop', {
   saveConfig: (cfg) =>
     ipcRenderer.invoke('wizard:save-config', cfg),
 
+  testPrint: (agentKey, apiUrl) =>
+    ipcRenderer.invoke('wizard:test-print', { agentKey, apiUrl }),
+
+  checkJob: (jobId, agentKey, apiUrl) =>
+    ipcRenderer.invoke('wizard:check-job', { jobId, agentKey, apiUrl }),
+
   // ── Dashboard ─────────────────────────────────────────────────────────────
 
   getState: () =>
@@ -30,6 +36,9 @@ contextBridge.exposeInMainWorld('printdrop', {
   onAgentError: (cb) => {
     ipcRenderer.on('agent:error', (_event, data) => cb(data));
   },
+
+  togglePin: () =>
+    ipcRenderer.invoke('dashboard:toggle-pin'),
 
   // ── App actions ───────────────────────────────────────────────────────────
 

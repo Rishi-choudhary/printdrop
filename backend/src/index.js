@@ -97,7 +97,6 @@ function validateConfig() {
   if (!config.telegram.botToken) warnings.push('TELEGRAM_BOT_TOKEN not set — Telegram bot will not start');
   if (!config.whatsapp.apiKey) warnings.push('WHATSAPP_API_KEY not set — WhatsApp (Gupshup) cannot send messages');
   if (!config.whatsapp.sourceNumber) warnings.push('GUPSHUP_SOURCE_NUMBER not set — WhatsApp messages will not be sent');
-  if (!config.msg91.authKey) warnings.push('MSG91_AUTH_KEY not set — OTP will be returned in API response (dev mode only)');
 
   if (!config.isDev) {
     // Hard failures in production
@@ -138,11 +137,9 @@ async function start() {
     // Start Telegram bot (optional — WhatsApp via Gupshup is the primary channel)
     if (config.telegram.botToken) {
       try {
-        const startBot = require('./bot/telegram');
-        if (typeof startBot === 'function') {
-          await startBot(fastify);
-          fastify.log.info('Telegram bot started');
-        }
+        const { startTelegramBot } = require('./bot/telegram');
+        await startTelegramBot(fastify);
+        fastify.log.info('Telegram bot started');
       } catch (err) {
         fastify.log.warn(`Telegram bot not started: ${err.message}`);
       }
@@ -153,6 +150,19 @@ async function start() {
     if (config.whatsapp.apiKey && config.whatsapp.sourceNumber) {
       fastify.log.info(`WhatsApp (Gupshup) ready — webhook: POST /api/webhooks/whatsapp`);
     }
+    // Graceful shutdown — stop Telegram bot polling before exit
+    const shutdown = async (signal) => {
+      fastify.log.info(`${signal} received, shutting down...`);
+      try {
+        const { stopTelegramBot } = require('./bot/telegram');
+        await stopTelegramBot();
+      } catch (_) {}
+      await fastify.close();
+      process.exit(0);
+    };
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

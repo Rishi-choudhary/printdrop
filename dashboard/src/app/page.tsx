@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Printer, MessageCircle, CreditCard, Ticket, Upload, ArrowRight } from 'lucide-react';
+import { Printer, MessageCircle, CreditCard, Ticket, Upload, ArrowRight, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/navbar';
 import { useAuth } from '@/lib/auth';
@@ -73,6 +73,15 @@ export default function Home() {
               <Link href="/profile">
                 <Button size="lg" variant="ghost-white" className="rounded-xl px-6">
                   My Orders
+                </Button>
+              </Link>
+            )}
+
+            {isCustomer && (
+              <Link href="/register-shop">
+                <Button size="lg" variant="ghost-white" className="rounded-xl px-6">
+                  <Store className="w-4 h-4 mr-2" />
+                  Register Your Shop
                 </Button>
               </Link>
             )}

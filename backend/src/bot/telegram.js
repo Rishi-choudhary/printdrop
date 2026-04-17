@@ -8,6 +8,21 @@ const messages = require('./messages');
 
 let bot = null;
 
+// Dedup recently processed message/callback IDs to prevent re-processing during 409 conflicts
+const _processedIds = new Set();
+const MAX_PROCESSED_IDS = 1000;
+
+function isDuplicate(id) {
+  if (_processedIds.has(id)) return true;
+  _processedIds.add(id);
+  if (_processedIds.size > MAX_PROCESSED_IDS) {
+    // Remove oldest entries (first 500)
+    const arr = [..._processedIds];
+    arr.slice(0, 500).forEach((v) => _processedIds.delete(v));
+  }
+  return false;
+}
+
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 async function checkSessionTimeout(conv, chatId) {
@@ -278,6 +293,7 @@ async function startTelegramBot(fastify) {
   // --- Event Handlers ---
 
   bot.on('document', async (msg) => {
+    if (isDuplicate(`doc_${msg.message_id}`)) return;
     try {
       await handleDocument(msg);
     } catch (err) {
@@ -287,6 +303,7 @@ async function startTelegramBot(fastify) {
   });
 
   bot.on('photo', async (msg) => {
+    if (isDuplicate(`photo_${msg.message_id}`)) return;
     try {
       await handlePhoto(msg);
     } catch (err) {
@@ -296,6 +313,10 @@ async function startTelegramBot(fastify) {
   });
 
   bot.on('callback_query', async (query) => {
+    if (isDuplicate(`cb_${query.id}`)) {
+      bot.answerCallbackQuery(query.id);
+      return;
+    }
     try {
       await handleCallbackQuery(query);
     } catch (err) {
@@ -307,6 +328,7 @@ async function startTelegramBot(fastify) {
 
   bot.on('text', async (msg) => {
     if (msg.document || msg.photo) return;
+    if (isDuplicate(`text_${msg.message_id}`)) return;
     try {
       await handleTextMessage(msg);
     } catch (err) {
@@ -316,4 +338,17 @@ async function startTelegramBot(fastify) {
   });
 }
 
-module.exports = startTelegramBot;
+async function stopTelegramBot() {
+  if (!bot) return;
+  try {
+    if (bot.isPolling && bot.isPolling()) {
+      await bot.stopPolling();
+      console.log('Telegram bot polling stopped');
+    }
+    bot = null;
+  } catch (err) {
+    console.error('Error stopping Telegram bot:', err.message);
+  }
+}
+
+module.exports = { startTelegramBot, stopTelegramBot };

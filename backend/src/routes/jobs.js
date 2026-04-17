@@ -133,6 +133,44 @@ async function jobRoutes(fastify) {
     }
   });
 
+  // POST /jobs/:id/claim — atomically claim a queued job for printing (agent use)
+  fastify.post('/:id/claim', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const { role } = request.user;
+    if (role === 'customer') {
+      return reply.code(403).send({ error: 'Not authorized' });
+    }
+
+    const { printerName, printerId } = request.body || {};
+
+    try {
+      const claimed = await jobService.claimJob(request.params.id, { printerName, printerId });
+
+      if (!claimed) {
+        return reply.code(409).send({ claimed: false, error: 'Job already claimed or not queued' });
+      }
+
+      // Notify customer
+      const job = await fastify.prisma.job.findUnique({
+        where: { id: request.params.id },
+        include: { shop: true, user: true },
+      });
+
+      if (job) {
+        try {
+          await notifyUser(job.userId, messages.statusUpdateMessage('printing', job.token));
+        } catch (err) {
+          console.error('Notification error:', err);
+        }
+      }
+
+      return { claimed: true, job };
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
+    }
+  });
+
   // POST /jobs/:id/cancel — cancel job
   fastify.post('/:id/cancel', {
     preHandler: [authenticate],

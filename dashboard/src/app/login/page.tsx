@@ -33,7 +33,12 @@ export default function LoginPage() {
 
   // Redirect if already logged in
   if (user) {
-    const dest = user.role === 'admin' ? '/admin' : user.role === 'shopkeeper' ? '/dashboard' : '/print';
+    let dest = '/print';
+    if (user.role === 'admin') {
+      dest = '/admin';
+    } else if (user.role === 'shopkeeper') {
+      dest = '/dashboard';
+    }
     router.push(dest);
     return null;
   }

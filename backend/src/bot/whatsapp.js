@@ -33,11 +33,13 @@ async function getOrCreateUser(phone) {
 }
 
 /**
- * Normalize phone to E.164-like string without the leading +.
+ * Normalize phone to E.164 format with leading +.
  * Gupshup delivers "919876543210"; Meta delivers "919876543210" or "+919876543210".
+ * We always store with + so phones match across WhatsApp, Telegram, and dashboard auth.
  */
 function normalizePhone(raw) {
-  return String(raw || '').replace(/^\+/, '').trim();
+  const cleaned = String(raw || '').replace(/^\+/, '').trim();
+  return cleaned ? `+${cleaned}` : '';
 }
 
 /**

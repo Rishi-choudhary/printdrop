@@ -22,8 +22,9 @@ export function Navbar() {
 
   const links: { href: string; label: string; icon: React.ReactNode; show: boolean }[] = [
     // Customer links
-    { href: '/print',   label: 'New Print',   icon: <Plus className="w-4 h-4" />,            show: isCustomer },
-    { href: '/profile',  label: 'My Orders',   icon: <FileText className="w-4 h-4" />,        show: isCustomer },
+    { href: '/print',          label: 'New Print',      icon: <Plus className="w-4 h-4" />,     show: isCustomer },
+    { href: '/profile',        label: 'My Orders',      icon: <FileText className="w-4 h-4" />, show: isCustomer },
+    { href: '/register-shop',  label: 'Register Shop',  icon: <Store className="w-4 h-4" />,    show: isCustomer },
 
     // Shopkeeper links
     { href: '/dashboard',           label: 'Queue',     icon: <LayoutDashboard className="w-4 h-4" />, show: isShopkeeper || isAdmin },

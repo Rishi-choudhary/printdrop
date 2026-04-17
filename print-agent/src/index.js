@@ -3,6 +3,7 @@ const path = require('path');
 const { printFile, getAvailablePrinters } = require('./printer');
 const { prepareForPrinting, generateCoverPage, prependCoverPage } = require('./pdf-utils');
 const { wrapImageAsPdf } = require('./image-to-pdf');
+const processedJobs = require('./processed-jobs');
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']);
 
@@ -174,9 +175,7 @@ async function sendHeartbeat() {
     }
   } catch (err) {
     // Non-fatal — agent can still run with env var fallback
-    if (process.env.DEBUG) {
-      console.warn(`  [agent] Heartbeat failed: ${err.message}`);
-    }
+    console.warn(`  [agent] Heartbeat failed: ${err.message}`);
   }
 }
 
@@ -223,6 +222,7 @@ async function processJob(job, printer, { isRecovery = false } = {}) {
         if (attempt === MAX_RETRIES) {
           log('All download attempts failed. Marking as cancelled.');
           try { await updateJobStatus(job.id, 'cancelled'); } catch {}
+          processedJobs.add(job.id);
           inFlight.delete(job.id);
           return;
         }
@@ -244,16 +244,32 @@ async function processJob(job, printer, { isRecovery = false } = {}) {
       }
     }
 
-    // ── Step 3: Mark as printing ──
+    // ── Step 3: Claim job atomically (prevents duplicate prints) ──
     if (!isRecovery) {
       try {
-        await updateJobStatus(job.id, 'printing', {
-          printerId: printer?.id || undefined,
-          printerName: printerLabel,
+        const claimResult = await apiFetch(`/api/jobs/${job.id}/claim`, {
+          method: 'POST',
+          body: JSON.stringify({
+            printerId: printer?.id || undefined,
+            printerName: printerLabel,
+          }),
         });
-        log('Status → printing');
+        if (!claimResult.claimed) {
+          log('Job already claimed by another agent — skipping');
+          // Cleanup downloaded file
+          try { fs.unlinkSync(filePath); } catch {}
+          if (convertedPath && convertedPath !== filePath) try { fs.unlinkSync(convertedPath); } catch {}
+          return;
+        }
+        log('Status → printing (claimed)');
       } catch (err) {
-        log(`WARNING: Could not update status: ${err.message}`);
+        if (err.message?.includes('409')) {
+          log('Job already claimed by another agent — skipping');
+          try { fs.unlinkSync(filePath); } catch {}
+          if (convertedPath && convertedPath !== filePath) try { fs.unlinkSync(convertedPath); } catch {}
+          return;
+        }
+        log(`WARNING: Could not claim job: ${err.message}`);
       }
     }
 
@@ -339,6 +355,7 @@ async function processJob(job, printer, { isRecovery = false } = {}) {
       log('Printed. Mark ready manually from the dashboard when verified.');
     }
   } finally {
+    processedJobs.add(job.id);
     inFlight.delete(job.id);
     if (printer?.systemName) printerBusy.set(printer.systemName, false);
   }
@@ -385,7 +402,7 @@ async function pollQueue() {
     const data = await apiFetch('/api/jobs?status=queued');
     const allQueued = Array.isArray(data) ? data : (data.jobs || []);
 
-    const newJobs = allQueued.filter((j) => !inFlight.has(j.id));
+    const newJobs = allQueued.filter((j) => !inFlight.has(j.id) && !processedJobs.has(j.id));
     if (newJobs.length === 0) return;
 
     const time = new Date().toLocaleTimeString('en-IN', { hour12: false });
@@ -476,12 +493,45 @@ async function main() {
   console.log('\n  Waiting for jobs...\n');
 
   // Periodic heartbeat
-  setInterval(sendHeartbeat, HEARTBEAT_MS);
+  heartbeatIntervalId = setInterval(sendHeartbeat, HEARTBEAT_MS);
 
   // Poll loop
   await pollQueue();
-  setInterval(pollQueue, POLL_MS);
+  pollIntervalId = setInterval(pollQueue, POLL_MS);
 }
+
+// ─── Graceful shutdown ───────────────────────────────────────────────────────
+let pollIntervalId = null;
+let heartbeatIntervalId = null;
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  console.log(`\n  [agent] ${signal} received, shutting down gracefully...`);
+
+  // Stop accepting new jobs
+  if (pollIntervalId) clearInterval(pollIntervalId);
+  if (heartbeatIntervalId) clearInterval(heartbeatIntervalId);
+
+  // Wait for in-flight jobs to finish (max 30s)
+  const timeout = Date.now() + 30_000;
+  while (inFlight.size > 0 && Date.now() < timeout) {
+    console.log(`  [agent] Waiting for ${inFlight.size} in-flight job(s)...`);
+    await sleep(1000);
+  }
+
+  if (inFlight.size > 0) {
+    console.log(`  [agent] ${inFlight.size} job(s) still in flight after timeout — they will be recovered on next startup`);
+  }
+
+  console.log('  [agent] Shutdown complete.');
+  process.exit(0);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));

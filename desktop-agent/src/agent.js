@@ -40,6 +40,7 @@ const _inFlight = new Set(); // job IDs currently being processed
 const _recentJobs = [];
 let _printedToday = 0;
 let _failedToday = 0;
+let _statsDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD for daily reset
 let _connected = false;
 let _lastPollAt = null;
 let _lastHeartbeatAt = null;
@@ -134,6 +135,15 @@ async function pollQueue() {
   if (_isPolling) return;
   _isPolling = true;
 
+  // Reset daily counters at midnight
+  const today = new Date().toISOString().slice(0, 10);
+  if (_statsDate !== today) {
+    _statsDate = today;
+    _printedToday = 0;
+    _failedToday = 0;
+    logger.info('Daily stats reset');
+  }
+
   try {
     const data = await apiFetch('/api/jobs?status=queued');
     const jobs = Array.isArray(data) ? data : (data.jobs || []);
@@ -215,15 +225,27 @@ async function processJob(job) {
     }
   }
 
-  // ── Step 3: Mark as 'printing' before sending to printer ──────────────────
+  // ── Step 3: Claim job atomically (prevents duplicate prints) ──────────────
   try {
-    await apiFetch(`/api/jobs/${job.id}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'printing', printerName }),
+    const claimResult = await apiFetch(`/api/jobs/${job.id}/claim`, {
+      method: 'POST',
+      body: JSON.stringify({ printerName }),
     });
+    if (!claimResult.claimed) {
+      logger.info(`[${token}] Job already claimed by another agent — skipping`);
+      _unlink(filePath);
+      _inFlight.delete(job.id);
+      return;
+    }
     _pushRecentJob(job, 'printing', printerName);
   } catch (err) {
-    logger.warn(`[${token}] Could not set 'printing': ${err.message}`);
+    if (err.message?.includes('409')) {
+      logger.info(`[${token}] Job already claimed by another agent — skipping`);
+      _unlink(filePath);
+      _inFlight.delete(job.id);
+      return;
+    }
+    logger.warn(`[${token}] Could not claim job: ${err.message}`);
   }
 
   // ── Step 4: Extract page range if specified ───────────────────────────────

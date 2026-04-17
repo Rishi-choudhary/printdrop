@@ -11,7 +11,7 @@
 
 <div class="header">
   <div class="logo">Print<span>Drop</span></div>
-  <div class="step-indicator" id="stepIndicator">Step 1 of 4</div>
+  <div class="step-indicator" id="stepIndicator">Step 1 of 5</div>
 </div>
 
 <!-- ── Step 1: Connect ──────────────────────────────────────────────────── -->
@@ -23,7 +23,7 @@
 
   <div class="form-group">
     <label>API Server URL</label>
-    <input type="url" id="apiUrl" value="https://api.printdrop.in" autocomplete="off" spellcheck="false">
+    <input type="url" id="apiUrl" value="https://printdrop-ecru.vercel.app" autocomplete="off" spellcheck="false">
   </div>
 
   <div class="form-group">
@@ -97,6 +97,24 @@
   </label>
 
   <div class="summary-card" id="summaryCard"></div>
+</div>
+
+<!-- ── Step 5: Test Print ─────────────────────────────────────────────── -->
+<div id="step5" class="step content hidden">
+  <h2>Test Print</h2>
+  <p class="subtitle">Send a test page to make sure everything works.</p>
+
+  <div id="testPrintArea" style="text-align:center; padding:24px 0;">
+    <button class="btn btn-primary" id="testPrintBtn" style="font-size:15px; padding:12px 32px;">
+      🖨️ Send Test Print
+    </button>
+  </div>
+
+  <div id="testPrintStatus" class="banner hidden" style="margin-top:12px;"></div>
+
+  <p style="text-align:center; color:#9ca3af; font-size:12px; margin-top:16px;">
+    You can skip this step and test later from the dashboard.
+  </p>
 </div>
 
 <!-- ── Footer ───────────────────────────────────────────────────────────── -->

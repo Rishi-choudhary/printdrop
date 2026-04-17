@@ -274,14 +274,13 @@ function processingMessage() {
 }
 
 /**
- * Sanitize user-provided text for WhatsApp messages.
- * WhatsApp uses *bold*, _italic_, ~strike~, `mono` — only strip raw * that
- * could accidentally bold arbitrary content. Underscores are intentional.
+ * Sanitize user-provided text for Telegram/WhatsApp Markdown messages.
+ * Escapes characters that break Telegram's Markdown parser:
+ * * (bold), _ (italic), [ ] (links), ` (code), ~ (strikethrough)
  */
 function escapeText(text) {
   if (!text) return '';
-  // Replace lone asterisks that aren't part of intentional bold pairs
-  return text.replace(/\*/g, '');
+  return text.replace(/[*_`\[\]~]/g, '\\$&');
 }
 
 module.exports = {

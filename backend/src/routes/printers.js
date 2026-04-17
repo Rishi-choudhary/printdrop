@@ -61,6 +61,15 @@ async function printerRoutes(fastify) {
       });
     }
 
+    // Mark any printers across all shops as offline if no heartbeat in 2+ minutes
+    await fastify.prisma.shopPrinter.updateMany({
+      where: {
+        isOnline: true,
+        lastSeen: { lt: new Date(Date.now() - 2 * 60 * 1000) },
+      },
+      data: { isOnline: false },
+    });
+
     // Return the routing config so the agent knows how to route jobs
     const routing = await fastify.prisma.shopPrinter.findMany({
       where: { shopId: shop.id },

@@ -15,3 +15,7 @@ dist/
 .DS_Store
 .mcp.json
 prisma/migrations/dev/
+.vercel
+*.tsbuildinfo
+print-agent/downloads/*
+!print-agent/downloads/.gitkeep
