@@ -242,4 +242,53 @@ async function prependCoverPage(coverPath, documentPath) {
   return tmpPath;
 }
 
-module.exports = { parsePageRange, extractPages, prepareForPrinting, generateCoverPage, prependCoverPage };
+/**
+ * Stamp a small token number in the top-right corner of the first page only.
+ * Returns the path to a new temp PDF (caller must delete it).
+ *
+ * The stamp is drawn inside the page's top-right margin so it doesn't overlap
+ * document content. We use a subtle grey so it reads as a label, not content.
+ */
+async function stampTokenOnFirstPage(documentPath, token) {
+  const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+
+  const docBytes = await fs.promises.readFile(documentPath);
+  const pdfDoc = await PDFDocument.load(docBytes, { ignoreEncryption: true });
+
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) {
+    throw new Error('Document has no pages to stamp');
+  }
+
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const tokenStr = `#${String(token).padStart(3, '0')}`;
+  const fontSize = 11;
+
+  const firstPage = pages[0];
+  const { width, height } = firstPage.getSize();
+  const textWidth = font.widthOfTextAtSize(tokenStr, fontSize);
+
+  const marginRight = 18;
+  const marginTop = 18;
+  firstPage.drawText(tokenStr, {
+    x: width - marginRight - textWidth,
+    y: height - marginTop - fontSize,
+    size: fontSize,
+    font,
+    color: rgb(0.2, 0.2, 0.2),
+  });
+
+  const outBytes = await pdfDoc.save();
+  const tmpPath = path.join(os.tmpdir(), `printdrop_stamped_${Date.now()}.pdf`);
+  fs.writeFileSync(tmpPath, outBytes);
+  return tmpPath;
+}
+
+module.exports = {
+  parsePageRange,
+  extractPages,
+  prepareForPrinting,
+  generateCoverPage,
+  prependCoverPage,
+  stampTokenOnFirstPage,
+};

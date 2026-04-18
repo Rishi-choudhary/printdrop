@@ -17,7 +17,7 @@ const path = require('path');
 const os = require('os');
 
 const { printFile, getAvailablePrinters } = require('./printer');
-const { prepareForPrinting, generateCoverPage, prependCoverPage } = require('./pdf-utils');
+const { prepareForPrinting, stampTokenOnFirstPage } = require('./pdf-utils');
 const { downloadFile } = require('./downloader');
 const { wrapImageAsPdf } = require('./image-to-pdf');
 const processedJobs = require('./processed-jobs');
@@ -275,17 +275,15 @@ async function processJob(job) {
     }
   }
 
-  // ── Step 5: Prepend cover page if enabled ─────────────────────────────────
+  // ── Step 5: Stamp token # on top-right of first page if enabled ───────────
   if (_config.coverPage) {
     try {
-      const coverPath = await generateCoverPage(job, printerName);
-      const mergedPath = await prependCoverPage(coverPath, printPath);
+      const stampedPath = await stampTokenOnFirstPage(printPath, job.token);
       if (isTmp) _unlink(printPath);
-      _unlink(coverPath);
-      printPath = mergedPath;
+      printPath = stampedPath;
       isTmp = true;
     } catch (err) {
-      logger.warn(`[${token}] Cover page failed: ${err.message}`);
+      logger.warn(`[${token}] Token stamp failed: ${err.message}`);
     }
   }
 
