@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -13,6 +13,16 @@ export function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Close mobile menu on route change
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   if (!user) return null;
 
@@ -21,21 +31,16 @@ export function Navbar() {
   const isCustomer   = !isAdmin && !isShopkeeper;
 
   const links: { href: string; label: string; icon: React.ReactNode; show: boolean }[] = [
-    // Customer links
-    { href: '/print',          label: 'New Print',      icon: <Plus className="w-4 h-4" />,     show: isCustomer },
-    { href: '/profile',        label: 'My Orders',      icon: <FileText className="w-4 h-4" />, show: isCustomer },
-    { href: '/register-shop',  label: 'Register Shop',  icon: <Store className="w-4 h-4" />,    show: isCustomer },
-
-    // Shopkeeper links
-    { href: '/dashboard',           label: 'Queue',     icon: <LayoutDashboard className="w-4 h-4" />, show: isShopkeeper || isAdmin },
-    { href: '/dashboard/settings',  label: 'Settings',  icon: <Settings className="w-4 h-4" />,        show: isShopkeeper || isAdmin },
-    { href: '/dashboard/analytics', label: 'Analytics', icon: <BarChart3 className="w-4 h-4" />,       show: isShopkeeper || isAdmin },
-
-    // Admin links
-    { href: '/admin',       label: 'Admin',  icon: <Shield className="w-4 h-4" />,  show: isAdmin },
-    { href: '/admin/shops', label: 'Shops',  icon: <Store className="w-4 h-4" />,   show: isAdmin },
-    { href: '/admin/users', label: 'Users',  icon: <Users className="w-4 h-4" />,   show: isAdmin },
-    { href: '/admin/jobs',  label: 'Jobs',   icon: <FileText className="w-4 h-4" />,show: isAdmin },
+    { href: '/print',               label: 'New Print',  icon: <Plus className="w-4 h-4" />,           show: isCustomer },
+    { href: '/profile',             label: 'My Orders',  icon: <FileText className="w-4 h-4" />,        show: isCustomer },
+    { href: '/register-shop',       label: 'Register',   icon: <Store className="w-4 h-4" />,           show: isCustomer },
+    { href: '/dashboard',           label: 'Queue',      icon: <LayoutDashboard className="w-4 h-4" />, show: isShopkeeper || isAdmin },
+    { href: '/dashboard/settings',  label: 'Settings',   icon: <Settings className="w-4 h-4" />,        show: isShopkeeper || isAdmin },
+    { href: '/dashboard/analytics', label: 'Analytics',  icon: <BarChart3 className="w-4 h-4" />,       show: isShopkeeper || isAdmin },
+    { href: '/admin',               label: 'Admin',      icon: <Shield className="w-4 h-4" />,          show: isAdmin },
+    { href: '/admin/shops',         label: 'Shops',      icon: <Store className="w-4 h-4" />,           show: isAdmin },
+    { href: '/admin/users',         label: 'Users',      icon: <Users className="w-4 h-4" />,           show: isAdmin },
+    { href: '/admin/jobs',          label: 'Jobs',       icon: <FileText className="w-4 h-4" />,        show: isAdmin },
   ];
 
   const visibleLinks = links.filter(l => l.show);
@@ -48,14 +53,23 @@ export function Navbar() {
   };
 
   return (
-    <nav className="bg-white border-b border-gray-200 relative z-40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav
+      className={[
+        'sticky top-0 z-40 transition-all duration-200',
+        scrolled
+          ? 'bg-background/80 backdrop-blur-md border-b border-border/60 shadow-sm'
+          : 'bg-background border-b border-border',
+      ].join(' ')}
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex justify-between h-14">
-          {/* Left: Logo + desktop links */}
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 text-blue-600 font-bold text-lg shrink-0">
-              <Printer className="w-5 h-5" />
-              <span className="hidden sm:inline">PrintDrop</span>
+          {/* Logo + desktop nav */}
+          <div className="flex items-center gap-5">
+            <Link href="/" className="flex items-center gap-2 font-semibold text-[15px] shrink-0">
+              <span className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
+                <Printer className="w-3.5 h-3.5 text-white" />
+              </span>
+              <span className="hidden sm:inline text-foreground">PrintDrop</span>
             </Link>
 
             <div className="hidden md:flex items-center gap-0.5">
@@ -63,11 +77,12 @@ export function Navbar() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={[
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
                     isActive(link.href)
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+                  ].join(' ')}
                 >
                   {link.icon}
                   <span>{link.label}</span>
@@ -76,39 +91,36 @@ export function Navbar() {
             </div>
           </div>
 
-          {/* Right: user info + mobile toggle */}
-          <div className="flex items-center gap-3">
-            {/* Customer: prominent Print CTA (desktop) */}
+          {/* Right */}
+          <div className="flex items-center gap-2">
             {isCustomer && (
               <Link
                 href="/print"
-                className="hidden sm:flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+                className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
               >
-                <Printer className="w-4 h-4" />
-                Print a File
+                <Printer className="w-3.5 h-3.5" />
+                Print a file
               </Link>
             )}
 
-            {/* User badge */}
-            <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
-              <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
-                <User className="w-3.5 h-3.5 text-gray-500" />
+            <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center">
+                <User className="w-3.5 h-3.5" />
               </div>
-              <span className="max-w-[120px] truncate">{user.name || user.phone}</span>
+              <span className="max-w-[110px] truncate text-xs">{user.name || user.phone}</span>
             </div>
 
             <button
               onClick={logout}
-              className="hidden sm:flex text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+              className="hidden sm:flex items-center p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
             </button>
 
-            {/* Mobile hamburger */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-50"
+              className="md:hidden p-2 rounded-lg text-muted-foreground hover:bg-accent transition-colors"
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -116,33 +128,33 @@ export function Navbar() {
         </div>
       </div>
 
-      {/* Mobile dropdown */}
+      {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="md:hidden bg-white border-t border-gray-100 shadow-lg absolute inset-x-0 top-14 z-50">
-          <div className="px-4 py-3 space-y-1">
+        <div className="md:hidden bg-background/95 backdrop-blur border-t border-border shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 py-3 space-y-0.5">
             {visibleLinks.map(link => (
               <Link
                 key={link.href}
                 href={link.href}
-                onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={[
+                  'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                   isActive(link.href)
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                ].join(' ')}
               >
                 {link.icon}
                 {link.label}
               </Link>
             ))}
 
-            <div className="border-t border-gray-100 my-2" />
+            <div className="h-px bg-border my-2" />
 
             <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-sm text-gray-500 truncate">{user.name || user.phone}</span>
+              <span className="text-sm text-muted-foreground truncate max-w-[160px]">{user.name || user.phone}</span>
               <button
-                onClick={() => { setMobileOpen(false); logout(); }}
-                className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 font-medium"
+                onClick={logout}
+                className="flex items-center gap-1.5 text-sm text-destructive hover:text-destructive/80 font-medium transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 Logout

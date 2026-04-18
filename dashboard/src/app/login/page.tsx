@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Printer, ArrowLeft, Loader2, Phone, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -21,30 +22,20 @@ export default function LoginPage() {
   const phoneRef = useRef<HTMLInputElement>(null);
   const otpRefs  = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Auto-focus phone input on mount
   useEffect(() => { phoneRef.current?.focus(); }, []);
-
-  // Auto-focus first OTP box when switching to OTP step
   useEffect(() => {
-    if (step === 'otp') {
-      setTimeout(() => otpRefs.current[0]?.focus(), 80);
-    }
+    if (step === 'otp') setTimeout(() => otpRefs.current[0]?.focus(), 80);
   }, [step]);
 
-  // Redirect if already logged in
   if (user) {
     let dest = '/print';
-    if (user.role === 'admin') {
-      dest = '/admin';
-    } else if (user.role === 'shopkeeper') {
-      dest = '/dashboard';
-    }
+    if (user.role === 'admin') dest = '/admin';
+    else if (user.role === 'shopkeeper') dest = '/dashboard';
     router.push(dest);
     return null;
   }
 
-  // ── Phone handling ──────────────────────────────────────────────
-  const rawDigits = phone.replace(/\D/g, '').slice(0, 10);
+  const rawDigits   = phone.replace(/\D/g, '').slice(0, 10);
   const isPhoneValid = rawDigits.length === 10;
 
   const formatPhone = (val: string) => {
@@ -58,8 +49,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const fullPhone = `+91${rawDigits}`;
-      const data = await api.post<{ otp?: string }>('/auth/send-otp', { phone: fullPhone });
+      const data = await api.post<{ otp?: string }>('/auth/send-otp', { phone: `+91${rawDigits}` });
       if (data.otp) setDevOtp(data.otp);
       setSent(true);
       setStep('otp');
@@ -70,52 +60,34 @@ export default function LoginPage() {
     }
   };
 
-  const phoneKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter') sendOtp();
-  };
+  const phoneKeyDown = (e: KeyboardEvent) => { if (e.key === 'Enter') sendOtp(); };
 
-  // ── OTP handling (6 individual boxes) ───────────────────────────
-  const otpValue = otp.join('');
+  const otpValue     = otp.join('');
   const isOtpComplete = otpValue.length === 6;
 
   const handleOtpChange = (index: number, value: string) => {
-    // Only accept digits
     const digit = value.replace(/\D/g, '').slice(-1);
-    const next = [...otp];
+    const next  = [...otp];
     next[index] = digit;
     setOtp(next);
-
-    // Auto-advance to next box
-    if (digit && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-
-    // Auto-submit when all 6 filled
+    if (digit && index < 5) otpRefs.current[index + 1]?.focus();
     const full = next.join('');
-    if (full.length === 6) {
-      verifyOtpValue(full);
-    }
+    if (full.length === 6) verifyOtpValue(full);
   };
 
   const handleOtpKeyDown = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-    if (e.key === 'Enter' && isOtpComplete) {
-      verifyOtpValue(otpValue);
-    }
+    if (e.key === 'Backspace' && !otp[index] && index > 0) otpRefs.current[index - 1]?.focus();
+    if (e.key === 'Enter' && isOtpComplete) verifyOtpValue(otpValue);
   };
 
   const handleOtpPaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (pasted.length === 0) return;
+    if (!pasted.length) return;
     const next = [...otp];
     for (let i = 0; i < 6; i++) next[i] = pasted[i] || '';
     setOtp(next);
-    // Focus last filled or the next empty
-    const focusIdx = Math.min(pasted.length, 5);
-    otpRefs.current[focusIdx]?.focus();
+    otpRefs.current[Math.min(pasted.length, 5)]?.focus();
     if (pasted.length === 6) verifyOtpValue(pasted);
   };
 
@@ -123,12 +95,10 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const fullPhone = `+91${rawDigits}`;
-      await login(fullPhone, code);
+      await login(`+91${rawDigits}`, code);
       window.location.href = '/';
     } catch (err: any) {
       setError(err.message || 'Invalid OTP. Please try again.');
-      // Clear OTP and refocus first box on error
       setOtp(['', '', '', '', '', '']);
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } finally {
@@ -146,31 +116,43 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative overflow-hidden">
+      {/* Dot-grid background */}
+      <div className="absolute inset-0 bg-dot-grid opacity-60 pointer-events-none" />
+      {/* Soft gradient blob */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/5 rounded-full blur-[80px] pointer-events-none" />
+
+      <div className="relative w-full max-w-sm">
+        {/* Back link */}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to home
+        </Link>
+
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white mb-4 shadow-lg shadow-blue-600/25">
-            <Printer className="w-7 h-7" />
+        <div className="mb-7">
+          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mb-4 shadow-md shadow-primary/20">
+            <Printer className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-2xl font-bold">PrintDrop</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {step === 'phone' ? 'Sign in with your phone number' : 'Enter the 6-digit code'}
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Welcome back</h1>
+          <p className="text-sm text-muted-foreground">
+            {step === 'phone' ? 'Sign in with your Indian phone number' : 'Check your SMS for the code'}
           </p>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        <div className="bg-background rounded-2xl border border-border shadow-md p-6">
 
-          {/* ── Phone Step ── */}
+          {/* Phone step */}
           {step === 'phone' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
-                    <span className="text-gray-400 text-sm font-medium">+91</span>
-                  </div>
+                <label className="block text-sm font-medium mb-1.5">Phone number</label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3.5 text-sm font-medium text-muted-foreground select-none">+91</span>
                   <input
                     ref={phoneRef}
                     type="tel"
@@ -180,55 +162,52 @@ export default function LoginPage() {
                     value={formatPhone(phone)}
                     onChange={(e) => setPhone(e.target.value)}
                     onKeyDown={phoneKeyDown}
-                    className={`block w-full rounded-xl border pl-12 pr-10 py-3 text-base shadow-sm
-                      placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      ${error ? 'border-red-400 focus:ring-red-500' : 'border-gray-200'}`}
+                    className={[
+                      'block w-full rounded-xl border pl-12 pr-4 py-3 text-base bg-background',
+                      'placeholder:text-muted-foreground/40',
+                      'focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50',
+                      'transition-shadow duration-150',
+                      error ? 'border-destructive/60 focus:ring-destructive/30' : 'border-border',
+                    ].join(' ')}
                   />
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3.5">
-                    <Phone className="w-4 h-4 text-gray-300" />
-                  </div>
+                  <Phone className="absolute right-3.5 w-4 h-4 text-muted-foreground/40 pointer-events-none" />
                 </div>
-                {error && <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">{error}</p>}
+                {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
               </div>
 
               <Button
                 onClick={sendOtp}
                 disabled={loading || !isPhoneValid}
-                className="w-full py-3 text-base rounded-xl"
+                className="w-full rounded-xl"
                 size="lg"
               >
                 {loading ? (
-                  <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Sending…</span>
-                ) : (
-                  'Send OTP'
-                )}
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
+                ) : 'Send verification code'}
               </Button>
 
-              <p className="text-xs text-center text-gray-400">
-                We&apos;ll send a 6-digit code via SMS to verify your number
+              <p className="text-xs text-center text-muted-foreground">
+                We&apos;ll send a 6-digit code via SMS
               </p>
             </div>
           )}
 
-          {/* ── OTP Step ── */}
+          {/* OTP step */}
           {step === 'otp' && (
-            <div className="space-y-5">
-              {/* Sent confirmation */}
-              <div className="flex items-center gap-2 bg-green-50 text-green-700 text-sm font-medium px-3 py-2.5 rounded-xl">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 bg-green-50 text-green-700 text-sm font-medium px-3 py-2.5 rounded-xl border border-green-100">
                 <ShieldCheck className="w-4 h-4 shrink-0" />
-                <span>OTP sent to +91 {formatPhone(rawDigits)}</span>
+                <span>Sent to +91 {formatPhone(rawDigits)}</span>
               </div>
 
-              {/* Dev OTP hint */}
               {devOtp && (
-                <div className="text-center text-xs bg-blue-50 text-blue-600 font-mono py-1.5 rounded-lg">
-                  Dev OTP: <span className="font-bold tracking-widest">{devOtp}</span>
+                <div className="text-center text-xs bg-muted text-muted-foreground font-mono py-1.5 rounded-lg border border-border">
+                  Dev code: <span className="font-bold tracking-widest text-foreground">{devOtp}</span>
                 </div>
               )}
 
-              {/* 6 individual OTP boxes */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Verification Code</label>
+                <label className="block text-sm font-medium mb-2">Verification code</label>
                 <div className="flex gap-2 justify-between" onPaste={handleOtpPaste}>
                   {otp.map((digit, i) => (
                     <input
@@ -241,35 +220,32 @@ export default function LoginPage() {
                       value={digit}
                       onChange={(e) => handleOtpChange(i, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                      className={`w-full aspect-square max-w-[52px] text-center text-xl font-bold rounded-xl border shadow-sm
-                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all
-                        ${digit ? 'border-blue-300 bg-blue-50/50' : 'border-gray-200'}
-                        ${error ? 'border-red-400 focus:ring-red-500' : ''}
-                      `}
+                      className={[
+                        'w-full aspect-square max-w-[48px] text-center text-xl font-bold tabular-nums rounded-xl border bg-background',
+                        'focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all',
+                        digit ? 'border-primary/40 bg-primary/5' : 'border-border',
+                        error ? 'border-destructive/60 focus:ring-destructive/30' : '',
+                      ].join(' ')}
                     />
                   ))}
                 </div>
-                {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+                {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
               </div>
 
-              {/* Verify button (backup — auto-submits on last digit) */}
               <Button
                 onClick={() => verifyOtpValue(otpValue)}
                 disabled={loading || !isOtpComplete}
-                className="w-full py-3 text-base rounded-xl"
+                className="w-full rounded-xl"
                 size="lg"
               >
                 {loading ? (
-                  <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</span>
-                ) : (
-                  'Verify & Continue'
-                )}
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
+                ) : 'Continue'}
               </Button>
 
-              {/* Change number */}
               <button
                 onClick={changeNumber}
-                className="flex items-center justify-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 w-full transition-colors"
+                className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground w-full transition-colors"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Change phone number

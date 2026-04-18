@@ -29,12 +29,12 @@ async function buildServer() {
     config.frontendUrl,
     'http://localhost:3000',
     'http://localhost:3001',
+    'https://printdrop.app',
+    'https://www.printdrop.app',
   ];
   await fastify.register(cors, {
     origin: (origin, cb) => {
-      // Allow requests with no origin (mobile apps, curl, server-to-server)
       if (!origin) return cb(null, true);
-      // Allow configured origins and any *.railway.app / *.vercel.app domain
       if (allowedOrigins.includes(origin) || origin.endsWith('.railway.app') || origin.endsWith('.vercel.app')) {
         return cb(null, true);
       }
