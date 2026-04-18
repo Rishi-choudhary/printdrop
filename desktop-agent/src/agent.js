@@ -21,6 +21,7 @@ const { prepareForPrinting, generateCoverPage, prependCoverPage } = require('./p
 const { downloadFile } = require('./downloader');
 const { wrapImageAsPdf } = require('./image-to-pdf');
 const processedJobs = require('./processed-jobs');
+const { ensureSumatra } = require('./sumatra');
 const logger = require('./logger');
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']);
@@ -54,6 +55,12 @@ async function start(config, callbacks) {
   logger.info(`Agent starting — shop: ${config.shopName || config.shopId}`);
   logger.info(`B&W printer: ${config.bwPrinterSystemName || 'none'}`);
   logger.info(`Color printer: ${config.colorPrinterSystemName || 'none (fallback to B&W)'}`);
+
+  // Pre-warm SumatraPDF on Windows so the first print has zero download wait.
+  // Non-blocking: if download fails, the print path falls back to Chromium.
+  if (os.platform() === 'win32') {
+    ensureSumatra().catch((err) => logger.warn(`SumatraPDF prewarm failed: ${err.message}`));
+  }
 
   // Recover any jobs stuck in 'printing' from a previous run
   await recoverStuckJobs();
@@ -226,26 +233,33 @@ async function processJob(job) {
   }
 
   // ── Step 3: Claim job atomically (prevents duplicate prints) ──────────────
-  try {
-    const claimResult = await apiFetch(`/api/jobs/${job.id}/claim`, {
-      method: 'POST',
-      body: JSON.stringify({ printerName }),
-    });
-    if (!claimResult.claimed) {
-      logger.info(`[${token}] Job already claimed by another agent — skipping`);
-      _unlink(filePath);
-      _inFlight.delete(job.id);
-      return;
-    }
+  // Recovery case: if the job is already in 'printing' status (it was claimed
+  // before the agent crashed/restarted), skip the claim — we're resuming it.
+  if (job.status === 'printing') {
+    logger.info(`[${token}] Resuming previously claimed job`);
     _pushRecentJob(job, 'printing', printerName);
-  } catch (err) {
-    if (err.message?.includes('409')) {
-      logger.info(`[${token}] Job already claimed by another agent — skipping`);
-      _unlink(filePath);
-      _inFlight.delete(job.id);
-      return;
+  } else {
+    try {
+      const claimResult = await apiFetch(`/api/jobs/${job.id}/claim`, {
+        method: 'POST',
+        body: JSON.stringify({ printerName }),
+      });
+      if (!claimResult.claimed) {
+        logger.info(`[${token}] Job already claimed by another agent — skipping`);
+        _unlink(filePath);
+        _inFlight.delete(job.id);
+        return;
+      }
+      _pushRecentJob(job, 'printing', printerName);
+    } catch (err) {
+      if (err.message?.includes('409')) {
+        logger.info(`[${token}] Job already claimed by another agent — skipping`);
+        _unlink(filePath);
+        _inFlight.delete(job.id);
+        return;
+      }
+      logger.warn(`[${token}] Could not claim job: ${err.message}`);
     }
-    logger.warn(`[${token}] Could not claim job: ${err.message}`);
   }
 
   // ── Step 4: Extract page range if specified ───────────────────────────────

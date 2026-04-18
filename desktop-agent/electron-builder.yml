@@ -40,9 +40,12 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  extraResources:
-    - from: resources/win/SumatraPDF.exe
-      to: SumatraPDF.exe
+  # SumatraPDF is auto-downloaded on first run (see src/sumatra.js).
+  # To ship it pre-bundled, place the 64-bit EXE at resources/win/SumatraPDF.exe
+  # and uncomment the block below.
+  # extraResources:
+  #   - from: resources/win/SumatraPDF.exe
+  #     to: SumatraPDF.exe
 
 nsis:
   oneClick: false

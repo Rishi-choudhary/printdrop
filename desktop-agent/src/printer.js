@@ -1,9 +1,10 @@
 'use strict';
 
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const { ensureSumatra } = require('./sumatra');
 
 const platform = os.platform();
 
@@ -59,25 +60,75 @@ async function printFile(filePath, options = {}) {
     throw new Error(`File not found: ${filePath}`);
   }
 
+  const fileSize = fs.statSync(filePath).size;
+  if (fileSize < 200) {
+    // Sanity check — a valid PDF is at least a few hundred bytes.
+    throw new Error(`PDF appears empty/corrupt (${fileSize} bytes): ${filePath}`);
+  }
+
   // Virtual / simulate mode
   if (simulate || isVirtualPrinter(printerName)) {
-    const kb = (fs.statSync(filePath).size / 1024).toFixed(1);
+    const kb = (fileSize / 1024).toFixed(1);
     const label = isVirtualPrinter(printerName) ? 'Virtual printer' : 'Simulated';
     await sleep(800 + Math.random() * 1200);
     return { success: true, output: `${label} — ${kb} KB`, simulated: true };
   }
 
   if (platform === 'win32') {
-    return printOnWindows(filePath, { printerName, copies, doubleSided, color, paperSize });
+    // Primary: SumatraPDF (reliable, silent CLI print, correct settings).
+    // Fallback: Chromium PDF viewer — only if Sumatra unavailable.
+    const sumatraPath = await ensureSumatra().catch(() => null);
+    if (sumatraPath) {
+      return printWithSumatra(filePath, sumatraPath, { printerName, copies, doubleSided, color, paperSize });
+    }
+    logWarn('[print] SumatraPDF unavailable — falling back to Chromium PDF viewer (less reliable)');
+    return printOnWindowsChromium(filePath, { printerName, copies, doubleSided, color, paperSize });
   }
 
   // macOS / Linux — use lp
   return printWithLp(filePath, { printerName, copies, doubleSided, color, paperSize });
 }
 
+// ─── Windows / SumatraPDF (primary) ──────────────────────────────────────────
+function printWithSumatra(filePath, sumatraPath, { printerName, copies, doubleSided, color, paperSize }) {
+  return new Promise((resolve, reject) => {
+    const sizeMb = (fs.statSync(filePath).size / 1024 / 1024).toFixed(2);
+    log(`[print] Sumatra → "${printerName || 'default'}" · ${path.basename(filePath)} (${sizeMb} MB)`);
+
+    const settings = [
+      `${copies || 1}x`,
+      doubleSided ? 'duplexlong' : 'simplex',
+      color ? 'color' : 'monochrome',
+      paperSize || 'A4',
+      'fit',
+    ].join(',');
+
+    const args = [];
+    if (printerName) {
+      args.push('-print-to', printerName);
+    } else {
+      args.push('-print-to-default');
+    }
+    args.push('-print-settings', settings);
+    args.push('-silent');
+    args.push(filePath);
+
+    log(`[print] Sumatra args: ${args.join(' ')}`);
+
+    execFile(sumatraPath, args, { timeout: 120_000, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) {
+        return reject(new Error(`SumatraPDF failed: ${err.message}${stderr ? ` — ${stderr}` : ''}`));
+      }
+      // SumatraPDF exits 0 after handing the job to the spooler. No further
+      // data-flush wait is needed — the file is read fully before submission.
+      log('[print] Sumatra dispatched job to spooler');
+      resolve({ success: true, output: `Printed via SumatraPDF to "${printerName || 'default printer'}"` });
+    });
+  });
+}
+
 // ─── macOS / Linux ───────────────────────────────────────────────────────────
 function printWithLp(filePath, { printerName, copies, doubleSided, color, paperSize }) {
-  const { execFile } = require('child_process');
   const args = [];
   if (printerName) args.push('-d', printerName);
   if (copies > 1) args.push('-n', String(copies));
@@ -96,19 +147,18 @@ function printWithLp(filePath, { printerName, copies, doubleSided, color, paperS
   });
 }
 
-// ─── Windows — Electron webContents.print() ──────────────────────────────────
-// Serves the PDF over a local HTTP server so Chromium's built-in PDF viewer
-// can load it without file:// sandbox restrictions or data URI size limits.
-function printOnWindows(filePath, { printerName, copies, doubleSided, color, paperSize }) {
+// ─── Windows — Electron webContents.print() (FALLBACK ONLY) ──────────────────
+// Kept as a last resort when SumatraPDF cannot be downloaded (e.g. offline
+// environment). Less reliable than Sumatra — some network printers spool a
+// blank job because Chromium's PDF plugin renders asynchronously.
+function printOnWindowsChromium(filePath, { printerName, copies, doubleSided, color, paperSize }) {
   const { BrowserWindow } = require('electron');
   const http = require('http');
 
   return new Promise((resolve, reject) => {
     const sizeMb = (fs.statSync(filePath).size / 1024 / 1024).toFixed(2);
-    log(`[print] File: ${path.basename(filePath)} (${sizeMb} MB) → printer: "${printerName || 'default'}"`);
+    log(`[print/chromium] File: ${path.basename(filePath)} (${sizeMb} MB) → printer: "${printerName || 'default'}"`);
 
-    // Spin up a single-file HTTP server on a random loopback port.
-    // Chromium treats http://127.0.0.1 as fully trusted — no sandbox issues.
     const server = http.createServer((_req, res) => {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Length', fs.statSync(filePath).size);
@@ -117,7 +167,7 @@ function printOnWindows(filePath, { printerName, copies, doubleSided, color, pap
 
     const hardTimeout = setTimeout(() => {
       server.close();
-      if (!win.isDestroyed()) win.close();
+      if (win && !win.isDestroyed()) win.close();
       reject(new Error('Print timeout (90s) — is the printer online?'));
     }, 90000);
 
@@ -126,38 +176,24 @@ function printOnWindows(filePath, { printerName, copies, doubleSided, color, pap
     server.listen(0, '127.0.0.1', () => {
       const port = server.address().port;
       const pdfUrl = `http://127.0.0.1:${port}/file.pdf`;
-      log(`[print] Serving PDF on ${pdfUrl}`);
+      log(`[print/chromium] Serving PDF on ${pdfUrl}`);
 
       win = new BrowserWindow({
-        // Position far off-screen so it is never visible to the user,
-        // but show: true is required — Chromium's PDF plugin does NOT
-        // initialize its GPU compositor in a show:false / hidden window,
-        // which causes the spooler to receive a blank print job.
         show: false,
         x: -9999,
         y: -9999,
         width: 850,
         height: 1100,
-        webPreferences: {
-          plugins: true,     // enables built-in Chromium PDF viewer
-          javascript: true,
-        },
+        webPreferences: { plugins: true, javascript: true },
       });
 
       win.loadURL(pdfUrl);
 
       win.webContents.once('did-finish-load', () => {
-        // Reveal the window off-screen so the GPU compositor activates and
-        // the PDF plugin renders. Without this, webContents.print() sends
-        // a blank job even though the spooler reports success.
         win.setPosition(-9999, -9999);
-        win.showInactive(); // show without stealing focus
-
-        // Chromium's PDF viewer plugin renders asynchronously after did-finish-load.
-        // 5s covers even large multi-page PDFs at typical CPU speeds.
+        win.showInactive();
         const renderWait = 5000;
-        log(`[print] PDF loaded in renderer — waiting ${renderWait}ms for render...`);
-
+        log(`[print/chromium] PDF loaded — waiting ${renderWait}ms for render...`);
         setTimeout(() => {
           const printOpts = {
             silent: true,
@@ -170,22 +206,15 @@ function printOnWindows(filePath, { printerName, copies, doubleSided, color, pap
             landscape: false,
             pageSize: paperSize || 'A4',
           };
-
-          log(`[print] Submitting — copies=${copies} duplex=${doubleSided} color=${color} paper=${paperSize}`);
-
+          log(`[print/chromium] Submitting — copies=${copies} duplex=${doubleSided} color=${color} paper=${paperSize}`);
           win.webContents.print(printOpts, (success, failureReason) => {
             clearTimeout(hardTimeout);
             server.close();
-
             if (!success) {
               if (!win.isDestroyed()) win.close();
               return reject(new Error(`Spooler rejected: ${failureReason || 'unknown reason'}`));
             }
-
-            log('[print] Spooler accepted job — holding window open for data flush (5s)...');
-
-            // Do NOT close the window immediately after spooler accepts.
-            // Chromium streams PDF data to the spooler; closing too early truncates it.
+            log('[print/chromium] Spooler accepted — holding window open for data flush (5s)...');
             setTimeout(() => {
               if (!win.isDestroyed()) win.close();
               resolve({ success: true, output: `Printed to "${printerName || 'default printer'}"` });
@@ -237,8 +266,6 @@ function printTestPage(printerName, color = false) {
   </body></html>`;
 
   if (platform !== 'win32') {
-    // On Mac/Linux: write HTML → print via lp (not needed in practice,
-    // test print is only wired in the Electron setup wizard on Windows)
     return Promise.resolve({ success: true, output: 'Test page sent' });
   }
 
@@ -256,7 +283,7 @@ function printTestPage(printerName, color = false) {
             else reject(new Error(`Print failed: ${reason || 'unknown'}`));
           },
         );
-      }, 500); // HTML renders instantly, 500ms is enough
+      }, 500);
     });
 
     win.webContents.once('did-fail-load', (_e, code, desc) => {

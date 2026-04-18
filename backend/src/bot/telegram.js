@@ -23,6 +23,36 @@ function isDuplicate(id) {
   return false;
 }
 
+/**
+ * Content-level dedup: Telegram sometimes re-delivers the same photo/document
+ * with a NEW message_id (retries after 409 conflicts, client re-uploads, album
+ * bursts). `file_unique_id` is stable per file content, so we block anything
+ * sent by the same chat within a short window.
+ */
+const _fileDedupe = new Map(); // key -> timestamp (ms)
+const FILE_DEDUPE_WINDOW_MS = 60_000; // 60s
+const MAX_FILE_DEDUPE = 2000;
+
+function isDuplicateFile(chatId, fileUniqueId) {
+  if (!fileUniqueId) return false;
+  const key = `${chatId}:${fileUniqueId}`;
+  const now = Date.now();
+  const last = _fileDedupe.get(key);
+  if (last && now - last < FILE_DEDUPE_WINDOW_MS) {
+    _fileDedupe.set(key, now);
+    return true;
+  }
+  _fileDedupe.set(key, now);
+  if (_fileDedupe.size > MAX_FILE_DEDUPE) {
+    // Evict entries older than the window
+    const cutoff = now - FILE_DEDUPE_WINDOW_MS;
+    for (const [k, t] of _fileDedupe) {
+      if (t < cutoff) _fileDedupe.delete(k);
+    }
+  }
+  return false;
+}
+
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 async function checkSessionTimeout(conv, chatId) {
@@ -124,6 +154,12 @@ async function handleDocument(msg) {
   const fileName = doc.file_name || 'document';
   const fileSize = doc.file_size || 0;
 
+  // Block re-deliveries of the same file within the dedupe window.
+  if (isDuplicateFile(chatId, doc.file_unique_id)) {
+    console.log(`[telegram] Duplicate document ignored: ${fileName} (${doc.file_unique_id})`);
+    return;
+  }
+
   // Validate
   const validation = fileService.validateFile(fileName, fileSize);
   if (!validation.valid) {
@@ -180,10 +216,18 @@ async function handlePhoto(msg) {
   const chatId = String(msg.chat.id);
   const user = await getOrCreateUser(msg.from);
 
-  bot.sendChatAction(chatId, 'upload_photo');
-
   // Get highest resolution photo
   const photo = msg.photo[msg.photo.length - 1];
+
+  // Block re-deliveries of the same photo within the dedupe window.
+  // Telegram sometimes re-sends the same photo with a new message_id.
+  if (isDuplicateFile(chatId, photo.file_unique_id)) {
+    console.log(`[telegram] Duplicate photo ignored: ${photo.file_unique_id}`);
+    return;
+  }
+
+  bot.sendChatAction(chatId, 'upload_photo');
+
   const fileName = `photo_${Date.now()}.jpg`;
 
   const fileLink = await bot.getFileLink(photo.file_id);
