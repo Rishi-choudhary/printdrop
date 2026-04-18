@@ -129,7 +129,7 @@ function Hero() {
         />
       </div>
 
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-24 pb-20 w-full">
+      <div className="relative max-w-6xl mx-auto px-5 sm:px-8 lg:px-6 pt-24 pb-20 w-full">
         <div className="grid lg:grid-cols-2 gap-16 items-center">
           {/* Left — copy */}
           <div className="animate-fade-in-up">
@@ -138,7 +138,7 @@ function Hero() {
               Available in your city
             </div>
 
-            <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl text-white leading-[1.05] tracking-tight mb-6">
+            <h1 className="font-serif italic text-5xl sm:text-6xl lg:text-[4.5rem] text-white leading-[1.08] tracking-tight mb-6">
               Print anything.<br />
               <span className="text-blue-300">Walk in.</span><br />
               Walk out.
@@ -470,40 +470,54 @@ function ForShops() {
 function Pricing() {
   return (
     <section id="pricing" className="bg-muted/30 border-y border-border py-20">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
+      <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-6 text-center">
         <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-3">Pricing</p>
-        <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-4">Simple. Transparent. Fair.</h2>
-        <p className="text-muted-foreground mb-10 max-w-lg mx-auto">
-          Free for customers. A small platform fee per completed order for shops. No setup cost, no monthly subscription.
+        <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-4">Simple. No surprises.</h2>
+        <p className="text-muted-foreground mb-10 max-w-md mx-auto">
+          Shops join free. Customers pay the shop&apos;s print rate plus a small convenience fee that covers secure payments and delivery of the order.
         </p>
 
         <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto text-left">
-          <div className="bg-background rounded-2xl border border-border p-7 shadow-sm">
-            <p className="text-sm font-semibold text-muted-foreground mb-2">For customers</p>
-            <p className="text-4xl font-bold tracking-tight mb-1">Free</p>
-            <p className="text-sm text-muted-foreground mb-5">Always.</p>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              {['Print from any device', 'Pay online — UPI, card, wallet', 'Real-time token tracking', 'Order history'].map(t => (
-                <li key={t} className="flex gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
-                  {t}
-                </li>
-              ))}
-            </ul>
-          </div>
-
           <div className="bg-primary rounded-2xl p-7 text-white shadow-md">
             <p className="text-sm font-semibold text-white/60 mb-2">For shops</p>
-            <p className="text-4xl font-bold tracking-tight mb-1">2%</p>
-            <p className="text-sm text-white/60 mb-5">per completed order</p>
+            <p className="text-4xl font-bold tracking-tight mb-1">Free</p>
+            <p className="text-sm text-white/60 mb-5">No setup fee. No monthly cost.</p>
             <ul className="space-y-2 text-sm text-white/80">
-              {['Live job queue dashboard', 'Auto-print mode', 'Revenue analytics', 'WhatsApp + Telegram support', 'Free setup — no hardware needed'].map(t => (
+              {[
+                'Live job queue dashboard',
+                'Auto-print mode',
+                'Revenue analytics',
+                'WhatsApp + Telegram integration',
+                'Online payments — no cash hassle',
+              ].map(t => (
                 <li key={t} className="flex gap-2">
                   <CheckCircle2 className="w-4 h-4 text-white/60 shrink-0 mt-0.5" />
                   {t}
                 </li>
               ))}
             </ul>
+          </div>
+
+          <div className="bg-background rounded-2xl border border-border p-7 shadow-sm">
+            <p className="text-sm font-semibold text-muted-foreground mb-2">For customers</p>
+            <p className="text-4xl font-bold tracking-tight mb-1">Print rate</p>
+            <p className="text-sm text-muted-foreground mb-5">+ small convenience fee</p>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              {[
+                'Print from WhatsApp, Telegram, or web',
+                'Secure online payment',
+                'Real-time token tracking',
+                'No account required to start',
+              ].map(t => (
+                <li key={t} className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground/70 mt-5 leading-relaxed">
+              The convenience fee covers payment processing and platform operations. You always see the total before paying.
+            </p>
           </div>
         </div>
       </div>
@@ -529,18 +543,38 @@ function Footer() {
             </p>
           </div>
           {[
-            { heading: 'Product', links: ['How it works', 'For shops', 'Pricing', 'Dashboard'] },
-            { heading: 'Company', links: ['About', 'Blog', 'Careers', 'Contact'] },
-            { heading: 'Legal', links: ['Privacy Policy', 'Terms of Service', 'Refund Policy'] },
+            {
+              heading: 'Product',
+              items: [
+                { label: 'How it works', href: '#how-it-works' },
+                { label: 'For shops', href: '#for-shops' },
+                { label: 'Pricing', href: '#pricing' },
+              ],
+            },
+            {
+              heading: 'Company',
+              items: [
+                { label: 'About', href: '/about' },
+                { label: 'Contact', href: '/contact' },
+              ],
+            },
+            {
+              heading: 'Legal',
+              items: [
+                { label: 'Privacy Policy', href: '#' },
+                { label: 'Terms of Service', href: '#' },
+                { label: 'Refund Policy', href: '#' },
+              ],
+            },
           ].map(col => (
             <div key={col.heading}>
               <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">{col.heading}</p>
               <ul className="space-y-2.5">
-                {col.links.map(link => (
-                  <li key={link}>
-                    <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      {link}
-                    </a>
+                {col.items.map(item => (
+                  <li key={item.label}>
+                    <Link href={item.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      {item.label}
+                    </Link>
                   </li>
                 ))}
               </ul>

@@ -354,8 +354,16 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Shop Settings</h1>
-      {msg && <div className="bg-green-50 text-green-700 px-4 py-2 rounded-lg text-sm">{msg}</div>}
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Shop Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage your shop details, pricing, and printer configuration.</p>
+      </div>
+      {msg && (
+        <div className="flex items-center gap-2 bg-green-50 text-green-700 border border-green-100 px-4 py-2.5 rounded-xl text-sm font-medium">
+          <CheckCircle className="w-4 h-4 shrink-0" />
+          {msg}
+        </div>
+      )}
 
       {/* Shop Details */}
       <Card>
@@ -368,7 +376,7 @@ export default function SettingsPage() {
             <Input label="Closes At" type="time" value={shop.closesAt} onChange={(e) => updateField('closesAt', e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Closed Days</label>
+            <label className="block text-sm font-medium text-foreground mb-2">Closed Days</label>
             <div className="flex gap-2">
               {days.map((d, i) => (
                 <button
@@ -428,14 +436,14 @@ export default function SettingsPage() {
       <Card>
         <CardHeader><h2 className="font-semibold">Print Agent</h2></CardHeader>
         <CardBody className="space-y-4">
-          <p className="text-sm text-gray-500">
-            Copy this key and set it as <code className="bg-gray-100 px-1 rounded">AGENT_KEY</code> on
+          <p className="text-sm text-muted-foreground">
+            Copy this key and set it as <code className="bg-muted px-1 rounded text-foreground text-xs font-mono">AGENT_KEY</code> on
             the machine where the print agent runs.
           </p>
 
           {shop.agentKey ? (
             <div className="flex items-center gap-2">
-              <code className="flex-1 block bg-gray-100 px-3 py-2 rounded text-sm font-mono break-all select-all">
+              <code className="flex-1 block bg-muted border border-border px-3 py-2 rounded-lg text-sm font-mono break-all select-all text-foreground">
                 {shop.agentKey}
               </code>
               <button
@@ -456,9 +464,9 @@ export default function SettingsPage() {
             </p>
           )}
 
-          <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1 text-gray-600">
-            <p className="font-medium text-gray-800 mb-2">Setup on the shop machine:</p>
-            <code className="block text-xs bg-white border border-gray-200 rounded px-3 py-2 font-mono">
+          <div className="bg-muted/50 border border-border rounded-xl p-4 text-sm space-y-1 text-muted-foreground">
+            <p className="font-medium text-foreground mb-2">Setup on the shop machine:</p>
+            <code className="block text-xs bg-background border border-border rounded-lg px-3 py-2 font-mono text-foreground">
               AGENT_KEY={shop.agentKey || 'your_key_here'} node src/index.js
             </code>
           </div>
