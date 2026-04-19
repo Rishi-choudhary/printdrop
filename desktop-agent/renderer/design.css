@@ -1,0 +1,237 @@
+/* PrintDrop — Design System Tokens */
+
+:root {
+  /* Brand */
+  --brand-500: #4f8ef7;
+  --brand-600: #3b7de8;
+  --brand-700: #2b6bd4;
+  --brand-50:  #eff6ff;
+  --brand-100: #dbeafe;
+
+  /* Surface (light) */
+  --bg:          #f6f7fb;
+  --bg-subtle:   #ffffff;
+  --surface:     #ffffff;
+  --surface-2:   #f9fafb;
+  --border:      #e5e7eb;
+  --border-2:    #d1d5db;
+
+  /* Text (light) */
+  --text:        #0f172a;
+  --text-muted:  #475569;
+  --text-soft:   #64748b;
+  --text-faint:  #94a3b8;
+
+  /* Status */
+  --success:     #10b981;
+  --success-50:  #ecfdf5;
+  --warning:     #f59e0b;
+  --warning-50:  #fffbeb;
+  --danger:      #ef4444;
+  --danger-50:   #fef2f2;
+  --info:        #0ea5e9;
+
+  /* Radius */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
+
+  /* Transitions */
+  --t-fast:   120ms ease;
+  --t-normal: 200ms ease;
+
+  /* Type */
+  --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Consolas', monospace;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg:          #0b1020;
+  --bg-subtle:   #0f1530;
+  --surface:     #141a33;
+  --surface-2:   #1a2142;
+  --border:      rgba(255, 255, 255, 0.08);
+  --border-2:    rgba(255, 255, 255, 0.16);
+
+  --text:        #f1f5f9;
+  --text-muted:  #cbd5e1;
+  --text-soft:   #94a3b8;
+  --text-faint:  #64748b;
+
+  --success-50:  rgba(16, 185, 129, 0.12);
+  --warning-50:  rgba(245, 158, 11, 0.12);
+  --danger-50:   rgba(239, 68, 68, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Base */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button { cursor: pointer; border: none; background: none; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+::-webkit-scrollbar           { width: 6px; height: 6px; }
+::-webkit-scrollbar-track     { background: transparent; }
+::-webkit-scrollbar-thumb     { background: var(--border-2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* ── Utility: buttons ─────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: var(--r-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+  white-space: nowrap;
+}
+
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
+
+.btn-primary {
+  background: var(--brand-500);
+  color: #fff;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 1px 2px rgba(0,0,0,0.08);
+}
+.btn-primary:hover:not(:disabled) { background: var(--brand-600); }
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-soft);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+.btn-sm { padding: 6px 10px; font-size: 12px; border-radius: var(--r-sm); }
+.btn-lg { padding: 12px 24px; font-size: 15px; border-radius: var(--r-md); }
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+
+.input, .select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  outline: none;
+}
+.input:focus, .select:focus {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px rgba(79, 142, 247, 0.18);
+}
+.input::placeholder { color: var(--text-faint); }
+
+.field { margin-bottom: 14px; }
+.field-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.field-hint {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-top: 5px;
+}
+
+/* ── Banner / Alert ──────────────────────────────────────────────────────── */
+
+.banner {
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+}
+.banner.show { display: flex; }
+.banner.error   { background: var(--danger-50);  border-color: rgba(239,68,68,0.3); color: var(--danger); }
+.banner.success { background: var(--success-50); border-color: rgba(16,185,129,0.3); color: var(--success); }
+.banner.info    { background: var(--brand-50);   border-color: rgba(79,142,247,0.3); color: var(--brand-600); }
+
+/* ── Spinner ──────────────────────────────────────────────────────────────── */
+
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border-2);
+  border-top-color: var(--brand-500);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.spinner.lg { width: 22px; height: 22px; border-width: 2.5px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 220ms ease both; }
+
+/* ── Badge ────────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.badge-success { background: var(--success-50); color: var(--success); }
+.badge-warning { background: var(--warning-50); color: var(--warning); }
+.badge-danger  { background: var(--danger-50);  color: var(--danger); }
+.badge-neutral { background: var(--surface-2);  color: var(--text-soft); }
+
+.hidden { display: none !important; }

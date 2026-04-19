@@ -54,15 +54,17 @@ function parseWebhookPayload(payload) {
     if (!phone) return null;
 
     const inner = msg.payload || {};
+    const messageId = msg.id || payload.payload?.id || payload.messageId;
 
     switch (msg.type) {
       case 'text':
-        return { phone, type: 'text', text: inner.text || '' };
+        return { phone, messageId, type: 'text', text: inner.text || '' };
 
       case 'file':
       case 'document':
         return {
           phone,
+          messageId,
           type: 'document',
           fileUrl: inner.url,
           fileName: inner.caption || path.basename(new URL(inner.url || 'http://x/doc.pdf').pathname) || 'document.pdf',
@@ -71,6 +73,7 @@ function parseWebhookPayload(payload) {
       case 'image':
         return {
           phone,
+          messageId,
           type: 'image',
           fileUrl: inner.url,
           fileName: inner.caption || `image_${Date.now()}.jpg`,
@@ -189,6 +192,12 @@ async function handleWebhook(payload) {
     return;
   }
 
+  // ── Feature flag: route to v2 bot (3-state, zero-OTP) if enabled ──────────
+  const botV2 = require('./v2');
+  if (botV2.isEnabled()) {
+    return botV2.handleWebhook(parsed);
+  }
+
   const { phone } = parsed;
   const user = await getOrCreateUser(phone);
   let conv = await conversationService.getOrCreateConversation('whatsapp', phone, user.id);
@@ -297,4 +306,4 @@ function verifyWebhookSignature(body, signature) {
   return `sha256=${expected}` === signature || expected === signature;
 }
 
-module.exports = { handleWebhook, verifyWebhookSignature };
+module.exports = { handleWebhook, verifyWebhookSignature, parseWebhookPayload, normalizePhone };

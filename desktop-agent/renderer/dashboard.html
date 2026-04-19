@@ -1,54 +1,142 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
-  <title>PrintDrop Dashboard</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:">
+  <title>PrintDrop</title>
+  <link rel="stylesheet" href="design.css">
   <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
 
-<!-- ── Header ──────────────────────────────────────────────────────────────── -->
-<div class="header">
-  <div class="status-dot" id="statusDot"></div>
-  <div class="shop-name" id="shopName">PrintDrop Agent</div>
-  <div class="last-poll" id="lastPoll">—</div>
-  <button class="close-btn" id="pinBtn" title="Pin window">📌</button>
-  <button class="close-btn" id="settingsBtn">⚙</button>
-  <button class="close-btn" id="closeBtn">×</button>
-</div>
+<div class="window">
 
-<!-- ── Stats ───────────────────────────────────────────────────────────────── -->
-<div class="stats">
-  <div class="stat-box">
-    <div class="num" id="statPrinted">0</div>
-    <div class="lbl">Printed Today</div>
+  <!-- ── Title bar (drag region) ─────────────────────────────────────── -->
+  <header class="titlebar">
+    <div class="titlebar-brand">
+      <div class="status-dot" id="statusDot" title="Agent connection status"></div>
+      <div class="titlebar-names">
+        <div class="shop-name" id="shopName">PrintDrop</div>
+        <div class="shop-status" id="shopStatus">Connecting…</div>
+      </div>
+    </div>
+    <div class="titlebar-actions">
+      <button class="icon-btn" id="themeBtn" title="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="pinBtn" title="Pin window">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-2-8H7z"/><path d="M9 9V4h6v5"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" title="Settings">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+      <button class="icon-btn close" id="closeBtn" title="Close">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Stats ───────────────────────────────────────────────────────── -->
+  <section class="stats">
+    <div class="stat">
+      <div class="stat-icon stat-icon-success">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div>
+        <div class="stat-num" id="statPrinted">0</div>
+        <div class="stat-lbl">Printed today</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon stat-icon-warning">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <div>
+        <div class="stat-num" id="statQueue">0</div>
+        <div class="stat-lbl">In queue</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon stat-icon-danger">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div>
+        <div class="stat-num" id="statFailed">0</div>
+        <div class="stat-lbl">Failed</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Toolbar (search + filters) ──────────────────────────────────── -->
+  <div class="toolbar">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input class="search-input" id="searchInput" type="text" placeholder="Search by token or file…">
+    </div>
+
+    <div class="filter-chips">
+      <button class="chip active" data-filter="all">All</button>
+      <button class="chip" data-filter="printing">Active</button>
+      <button class="chip" data-filter="ready">Ready</button>
+      <button class="chip" data-filter="cancelled">Failed</button>
+    </div>
   </div>
-  <div class="stat-box">
-    <div class="num" id="statQueue">0</div>
-    <div class="lbl">In Queue</div>
+
+  <!-- ── Job list ────────────────────────────────────────────────────── -->
+  <div class="job-list" id="jobList">
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polyline points="6 9 6 2 18 2 18 9"/>
+        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+        <rect x="6" y="14" width="12" height="8"/>
+      </svg>
+      <div class="empty-title">Waiting for print jobs</div>
+      <div class="empty-sub">Incoming jobs will appear here automatically</div>
+    </div>
   </div>
-  <div class="stat-box">
-    <div class="num" id="statFailed">0</div>
-    <div class="lbl">Failed</div>
-  </div>
-</div>
 
-<!-- ── Recent Jobs ──────────────────────────────────────────────────────────── -->
-<div class="section-title">Recent Jobs</div>
-<div class="job-list" id="jobList">
-  <div class="empty-msg">No jobs yet. Waiting for print jobs…</div>
-</div>
+  <!-- ── Printer status strip ────────────────────────────────────────── -->
+  <section class="printers" id="printerSection"></section>
 
-<!-- ── Printers ──────────────────────────────────────────────────────────────── -->
-<div class="printers" id="printerSection"></div>
-
-<!-- ── Footer ──────────────────────────────────────────────────────────────── -->
-<div class="footer">
-  <button class="footer-btn" id="openLogBtn">📄 Open Log</button>
-  <button class="footer-btn" id="footerSettingsBtn">⚙ Settings</button>
-  <button class="footer-btn danger" id="quitBtn">Quit</button>
+  <!-- ── Footer ──────────────────────────────────────────────────────── -->
+  <footer class="foot">
+    <div class="foot-left" id="lastPollWrap">
+      <span class="pulse"></span>
+      <span id="lastPoll">—</span>
+    </div>
+    <div class="foot-actions">
+      <button class="foot-btn" id="openLogBtn" title="Open agent log">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
+        Logs
+      </button>
+      <button class="foot-btn" id="footerSettingsBtn" title="Open settings">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m7.07 7.07 4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m7.07-7.07 4.24-4.24"/>
+        </svg>
+        Settings
+      </button>
+      <button class="foot-btn danger" id="quitBtn" title="Quit agent">Quit</button>
+    </div>
+  </footer>
 </div>
 
 <script src="dashboard.js"></script>

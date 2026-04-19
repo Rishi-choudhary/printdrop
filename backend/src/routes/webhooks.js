@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const paymentService = require('../services/payment');
 const { handleWebhook: handleWhatsAppWebhook, verifyWebhookSignature: verifyWhatsApp } = require('../bot/whatsapp');
+const botV2 = require('../bot/v2');
 const { notifyUser } = require('../services/notification');
 const messages = require('../bot/messages');
 const config = require('../config');
@@ -73,6 +74,7 @@ async function webhookRoutes(fastify) {
 
           if (job) {
             await notifyUser(job.userId, messages.tokenMessage(job.token, job.shop.name, 10));
+            if (botV2.isEnabled()) botV2.clearSessionForJob(job.id).catch(() => {});
           }
         }
       } else if (event === 'payment.failed') {
@@ -134,6 +136,7 @@ async function webhookRoutes(fastify) {
         await notifyUser(job.userId, messages.tokenMessage(job.token, job.shop.name, 10)).catch(
           (err) => console.error('Notification error:', err),
         );
+        if (botV2.isEnabled()) botV2.clearSessionForJob(job.id).catch(() => {});
       }
 
       return {

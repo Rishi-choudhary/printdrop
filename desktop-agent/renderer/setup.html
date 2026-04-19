@@ -1,126 +1,345 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
-  <title>PrintDrop Agent Setup</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:">
+  <title>PrintDrop Setup</title>
+  <link rel="stylesheet" href="design.css">
   <link rel="stylesheet" href="setup.css">
 </head>
 <body>
 
-<div class="header">
-  <div class="logo">Print<span>Drop</span></div>
-  <div class="step-indicator" id="stepIndicator">Step 1 of 5</div>
-</div>
-
-<!-- ── Step 1: Connect ──────────────────────────────────────────────────── -->
-<div id="step1" class="step content">
-  <h2>Connect Your Agent</h2>
-  <p class="subtitle">Enter your agent key from the PrintDrop dashboard.<br>Go to Dashboard → Settings → Print Agent to find it.</p>
-
-  <div id="banner1" class="banner"></div>
-
-  <div class="form-group">
-    <label>API Server URL</label>
-    <input type="url" id="apiUrl" value="https://printdrop-ecru.vercel.app" autocomplete="off" spellcheck="false">
-  </div>
-
-  <div class="form-group">
-    <label>Agent Key</label>
-    <input type="password" id="agentKey" placeholder="ak_live_…" autocomplete="off" spellcheck="false">
-  </div>
-</div>
-
-<!-- ── Step 2: Detect Printers ─────────────────────────────────────────── -->
-<div id="step2" class="step content hidden">
-  <h2>Detect Printers</h2>
-  <p class="subtitle" id="shopConnected">Finding available printers on this computer…</p>
-
-  <div id="printerList" class="printer-list">
-    <div class="detecting-row">
-      <span class="spinner"></span> Detecting printers…
+<div class="shell">
+  <!-- ── Sidebar with stepper ─────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 32 32" width="24" height="24" fill="none">
+          <rect width="32" height="32" rx="8" fill="#4f8ef7"/>
+          <path d="M9 10h14v6H9z M11 16h10v8H11z M13 6h6v4h-6z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>
+          <circle cx="19" cy="13" r="1" fill="#fff"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">PrintDrop</div>
+        <div class="brand-sub">Agent Setup</div>
+      </div>
     </div>
-  </div>
 
-  <div id="noPrintersWarning" class="banner error hidden">
-    No printers found. Make sure your printer is connected and drivers are installed, then click Refresh.
-  </div>
-</div>
+    <nav class="stepper" id="stepper">
+      <div class="stepper-item" data-step="1">
+        <div class="stepper-dot">1</div>
+        <div class="stepper-text">
+          <div class="stepper-title">Connect</div>
+          <div class="stepper-desc">Agent key &amp; server</div>
+        </div>
+      </div>
+      <div class="stepper-item" data-step="2">
+        <div class="stepper-dot">2</div>
+        <div class="stepper-text">
+          <div class="stepper-title">Detect</div>
+          <div class="stepper-desc">Find printers</div>
+        </div>
+      </div>
+      <div class="stepper-item" data-step="3">
+        <div class="stepper-dot">3</div>
+        <div class="stepper-text">
+          <div class="stepper-title">Assign</div>
+          <div class="stepper-desc">B&amp;W and color</div>
+        </div>
+      </div>
+      <div class="stepper-item" data-step="4">
+        <div class="stepper-dot">4</div>
+        <div class="stepper-text">
+          <div class="stepper-title">Preferences</div>
+          <div class="stepper-desc">Startup, sounds</div>
+        </div>
+      </div>
+      <div class="stepper-item" data-step="5">
+        <div class="stepper-dot">5</div>
+        <div class="stepper-text">
+          <div class="stepper-title">Test</div>
+          <div class="stepper-desc">Verify printing</div>
+        </div>
+      </div>
+    </nav>
 
-<!-- ── Step 3: Assign Printers ─────────────────────────────────────────── -->
-<div id="step3" class="step content hidden">
-  <h2>Assign Printers</h2>
-  <p class="subtitle">Choose which printer handles black &amp; white and color jobs.</p>
+    <div class="sidebar-foot">
+      <a class="help-link" href="https://printdrop.app/help" id="helpLink">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        Need help?
+      </a>
+    </div>
+  </aside>
 
-  <div class="form-group">
-    <label>B&amp;W / Standard Printer *</label>
-    <select id="bwPrinter"></select>
-  </div>
+  <!-- ── Main content ─────────────────────────────────────────────────── -->
+  <main class="main">
+    <div class="main-inner">
 
-  <div class="form-group">
-    <label>Color Printer <span style="color:#9ca3af;font-weight:400">(optional)</span></label>
-    <select id="colorPrinter"></select>
-  </div>
+      <!-- STEP 1 — Connect -->
+      <section id="step1" class="step fade-in">
+        <header class="step-head">
+          <h1>Connect your agent</h1>
+          <p>Paste your agent key from the PrintDrop dashboard to link this computer to your shop.</p>
+        </header>
 
-  <div class="info-box">
-    Color jobs will be sent to the B&amp;W printer if no color printer is selected.
-    They will print but may appear in grayscale.
-  </div>
-</div>
+        <div id="banner1" class="banner"></div>
 
-<!-- ── Step 4: Preferences ─────────────────────────────────────────────── -->
-<div id="step4" class="step content hidden">
-  <h2>Almost Done!</h2>
-  <p class="subtitle">Set your preferences and finish setup.</p>
+        <div class="field">
+          <label class="field-label" for="apiUrl">Server URL</label>
+          <input class="input" type="url" id="apiUrl" value="https://printdrop.app" autocomplete="off" spellcheck="false">
+          <div class="field-hint">Leave as default unless you're self-hosting.</div>
+        </div>
 
-  <label class="checkbox-row">
-    <input type="checkbox" id="prefCoverPage" checked>
-    <span class="checkbox-label">
-      Print cover slip before each document
-      <small>Token number and job details on a small slip</small>
-    </span>
-  </label>
+        <div class="field">
+          <label class="field-label" for="agentKey">Agent key</label>
+          <div class="input-group">
+            <input class="input" type="password" id="agentKey" placeholder="ak_live_••••••••••••" autocomplete="off" spellcheck="false">
+            <button class="reveal-btn" id="revealKey" type="button" title="Show/hide key">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+          <div class="field-hint">Find this at Dashboard → Settings → Print Agent.</div>
+        </div>
+      </section>
 
-  <label class="checkbox-row">
-    <input type="checkbox" id="prefSounds" checked>
-    <span class="checkbox-label">
-      Play sounds for new jobs and completions
-    </span>
-  </label>
+      <!-- STEP 2 — Detect printers -->
+      <section id="step2" class="step hidden">
+        <header class="step-head">
+          <h1>Detect printers</h1>
+          <p id="shopConnected">Scanning this computer for available printers…</p>
+        </header>
 
-  <label class="checkbox-row">
-    <input type="checkbox" id="prefAutoStart" checked>
-    <span class="checkbox-label">
-      Start automatically when this computer boots
-    </span>
-  </label>
+        <div id="printerList" class="printer-grid">
+          <div class="detecting-card">
+            <span class="spinner lg"></span>
+            <div>Looking for printers…</div>
+          </div>
+        </div>
 
-  <div class="summary-card" id="summaryCard"></div>
-</div>
+        <div id="noPrintersWarning" class="banner error">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>No printers detected. Make sure your printer is connected &amp; drivers are installed.</span>
+        </div>
 
-<!-- ── Step 5: Test Print ─────────────────────────────────────────────── -->
-<div id="step5" class="step content hidden">
-  <h2>Test Print</h2>
-  <p class="subtitle">Send a test page to make sure everything works.</p>
+        <div class="row-actions">
+          <button class="btn btn-secondary" id="refreshPrintersBtn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+      </section>
 
-  <div id="testPrintArea" style="text-align:center; padding:24px 0;">
-    <button class="btn btn-primary" id="testPrintBtn" style="font-size:15px; padding:12px 32px;">
-      🖨️ Send Test Print
-    </button>
-  </div>
+      <!-- STEP 3 — Assign printers -->
+      <section id="step3" class="step hidden">
+        <header class="step-head">
+          <h1>Assign printers</h1>
+          <p>Pick which printer handles black &amp; white and color jobs.</p>
+        </header>
 
-  <div id="testPrintStatus" class="banner hidden" style="margin-top:12px;"></div>
+        <div class="printer-card">
+          <div class="printer-card-head">
+            <div class="printer-icon printer-icon-bw">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+              </svg>
+            </div>
+            <div>
+              <div class="printer-card-title">Black &amp; white printer</div>
+              <div class="printer-card-sub">Required · handles standard jobs</div>
+            </div>
+          </div>
+          <select class="select" id="bwPrinter"></select>
 
-  <p style="text-align:center; color:#9ca3af; font-size:12px; margin-top:16px;">
-    You can skip this step and test later from the dashboard.
-  </p>
-</div>
+          <div class="printer-advanced hidden" id="bwAdvanced">
+            <div class="grid-2">
+              <div class="field">
+                <label class="field-label">Default paper</label>
+                <select class="select" id="bwPaperSize">
+                  <option value="A4">A4</option>
+                  <option value="Letter">Letter</option>
+                  <option value="A3">A3</option>
+                  <option value="Legal">Legal</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label">Default duplex</label>
+                <select class="select" id="bwDuplex">
+                  <option value="simplex">Single-sided</option>
+                  <option value="duplex-long">Double-sided (long edge)</option>
+                  <option value="duplex-short">Double-sided (short edge)</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
-<!-- ── Footer ───────────────────────────────────────────────────────────── -->
-<div class="footer">
-  <button class="btn btn-link" id="backBtn">← Back</button>
-  <button class="btn btn-primary" id="nextBtn">Validate &amp; Connect</button>
+          <button class="advanced-toggle" data-target="bwAdvanced">
+            <span>Advanced options</span>
+            <svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="printer-card" style="margin-top: 12px;">
+          <div class="printer-card-head">
+            <div class="printer-icon printer-icon-color">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="20" r="2.5"/><path d="M12 2a10 10 0 1 0 0 20"/>
+              </svg>
+            </div>
+            <div>
+              <div class="printer-card-title">Color printer <span class="optional">Optional</span></div>
+              <div class="printer-card-sub">Color jobs fall back to B&amp;W if unset</div>
+            </div>
+          </div>
+          <select class="select" id="colorPrinter">
+            <option value="">— No color printer —</option>
+          </select>
+
+          <div class="printer-advanced hidden" id="colorAdvanced">
+            <div class="grid-2">
+              <div class="field">
+                <label class="field-label">Default paper</label>
+                <select class="select" id="colorPaperSize">
+                  <option value="A4">A4</option>
+                  <option value="Letter">Letter</option>
+                  <option value="A3">A3</option>
+                  <option value="Legal">Legal</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label">Default duplex</label>
+                <select class="select" id="colorDuplex">
+                  <option value="simplex">Single-sided</option>
+                  <option value="duplex-long">Double-sided (long edge)</option>
+                  <option value="duplex-short">Double-sided (short edge)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <button class="advanced-toggle" data-target="colorAdvanced">
+            <span>Advanced options</span>
+            <svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- STEP 4 — Preferences -->
+      <section id="step4" class="step hidden">
+        <header class="step-head">
+          <h1>Preferences</h1>
+          <p>A few small choices to customize how the agent behaves.</p>
+        </header>
+
+        <div class="toggle-list">
+          <label class="toggle-row">
+            <div class="toggle-copy">
+              <div class="toggle-title">Stamp token on first page</div>
+              <div class="toggle-sub">Small token # printed top-right of every job</div>
+            </div>
+            <input type="checkbox" id="prefCoverPage" checked>
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <div class="toggle-copy">
+              <div class="toggle-title">Sound alerts</div>
+              <div class="toggle-sub">Play a chime on new jobs and completion</div>
+            </div>
+            <input type="checkbox" id="prefSounds" checked>
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <div class="toggle-copy">
+              <div class="toggle-title">Start on boot</div>
+              <div class="toggle-sub">Launch PrintDrop Agent when this computer starts</div>
+            </div>
+            <input type="checkbox" id="prefAutoStart" checked>
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <div class="toggle-copy">
+              <div class="toggle-title">Desktop notifications</div>
+              <div class="toggle-sub">Show OS notifications for jobs</div>
+            </div>
+            <input type="checkbox" id="prefNotifications" checked>
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="summary-card" id="summaryCard"></div>
+      </section>
+
+      <!-- STEP 5 — Test print -->
+      <section id="step5" class="step hidden">
+        <header class="step-head">
+          <h1>Test print</h1>
+          <p>Send a test page to make sure everything's connected.</p>
+        </header>
+
+        <div class="test-area">
+          <div class="test-illustration">
+            <svg viewBox="0 0 120 120" width="80" height="80" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round">
+              <path d="M30 50V20h60v30"/>
+              <rect x="20" y="50" width="80" height="40" rx="4"/>
+              <rect x="30" y="70" width="60" height="30"/>
+              <circle cx="80" cy="60" r="2" fill="currentColor"/>
+            </svg>
+          </div>
+
+          <div class="test-target">
+            <label class="field-label">Print to</label>
+            <select class="select" id="testPrinter"></select>
+          </div>
+
+          <button class="btn btn-primary btn-lg" id="testPrintBtn">
+            Send test page
+          </button>
+
+          <div id="testPrintStatus" class="banner" style="margin-top: 12px;"></div>
+
+          <div class="skip-hint">You can skip this — run tests anytime from Settings.</div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ── Footer actions ─────────────────────────────────────────────── -->
+    <footer class="foot">
+      <button class="btn btn-ghost" id="backBtn">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+        </svg>
+        Back
+      </button>
+      <div class="foot-spacer"></div>
+      <div class="step-hint" id="stepHint">Step 1 of 5</div>
+      <button class="btn btn-primary" id="nextBtn">
+        <span id="nextLabel">Continue</span>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </button>
+    </footer>
+  </main>
 </div>
 
 <script src="setup.js"></script>

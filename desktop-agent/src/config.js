@@ -5,7 +5,7 @@ const { app } = require('electron');
 const DEFAULTS = {
   version: 1,
   agentKey: '',
-  apiUrl: 'https://printdrop-ecru.vercel.app',
+  apiUrl: 'https://printdrop.app',
   shopId: null,
   shopName: null,
   bwPrinterSystemName: null,

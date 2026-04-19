@@ -1,10 +1,11 @@
-appId: com.printdrop.agent
+appId: app.printdrop.agent
 productName: PrintDrop Agent
 copyright: "Copyright © 2026 PrintDrop"
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
 directories:
   output: dist
-  buildResources: assets
+  buildResources: build
 
 files:
   - main.js
@@ -12,55 +13,109 @@ files:
   - src/**/*
   - renderer/**/*
   - assets/**/*
-  - node_modules/**/*
-  - "!node_modules/**/{test,tests,__tests__,spec}/**"
-  - "!node_modules/**/*.map"
-  - "!node_modules/**/README*"
+  - "!**/*.map"
+  - "!**/{.DS_Store,.gitkeep,.gitignore,Thumbs.db}"
+  - "!node_modules/**/{test,tests,__tests__,spec,example,examples,docs,doc}/**"
+  - "!node_modules/**/*.{md,markdown,ts,flow,coffee}"
+  - "!node_modules/**/{README*,CHANGELOG*,HISTORY*,LICENSE*,license*,AUTHORS*}"
 
+asar: true
+compression: normal
+
+# ── macOS ────────────────────────────────────────────────────────────────────
 mac:
   category: public.app-category.utilities
-  icon: assets/icons/icon.icns
+  icon: build/icon.icns
+  darkModeSupport: true
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # Unsigned builds OK for MVP — users right-click → Open first time.
+  # For production: set APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+  # env vars and uncomment `notarize: true` below.
+  identity: null
+  # notarize: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    LSUIElement: true                      # Tray-only app (no dock icon)
+    NSPrinterUsageDescription: "PrintDrop prints customer documents to your shop printers."
   target:
     - target: dmg
       arch: [x64, arm64]
-  hardenedRuntime: true
-  gatekeeperAssess: false
+    - target: zip
+      arch: [x64, arm64]
 
 dmg:
+  title: "${productName} ${version}"
+  icon: build/icon.icns
+  background: build/dmg-background.png
+  window:
+    width: 540
+    height: 380
   contents:
-    - x: 130
-      y: 220
-    - x: 410
-      y: 220
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
       type: link
       path: /Applications
 
+# ── Windows ──────────────────────────────────────────────────────────────────
 win:
-  icon: assets/icons/icon.ico
+  icon: build/icon.ico
+  publisherName: PrintDrop
+  requestedExecutionLevel: asInvoker
+  # Optionally bundle SumatraPDF: drop the 64-bit EXE at resources/win/SumatraPDF.exe.
+  # If it's absent, src/sumatra.js will download it on first run.
+  extraResources:
+    - from: resources/win
+      to: .
+      filter: ["SumatraPDF.exe"]
   target:
     - target: nsis
       arch: [x64]
-  # SumatraPDF is auto-downloaded on first run (see src/sumatra.js).
-  # To ship it pre-bundled, place the 64-bit EXE at resources/win/SumatraPDF.exe
-  # and uncomment the block below.
-  # extraResources:
-  #   - from: resources/win/SumatraPDF.exe
-  #     to: SumatraPDF.exe
+    - target: portable
+      arch: [x64]
 
 nsis:
   oneClick: false
+  perMachine: false
   allowToChangeInstallationDirectory: true
-  installerIcon: assets/icons/icon.ico
-  uninstallerIcon: assets/icons/icon.ico
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: PrintDrop Agent
   runAfterFinish: true
   deleteAppDataOnUninstall: false
+  include: build/installer.nsh
 
+portable:
+  artifactName: "${productName}-${version}-portable.${ext}"
+
+# ── Linux ────────────────────────────────────────────────────────────────────
 linux:
-  icon: assets/icons/icon.png
+  icon: build/icons
   category: Utility
+  synopsis: Print shop agent for PrintDrop
+  description: >
+    PrintDrop Desktop Agent listens for incoming print jobs, shows a live queue,
+    and prints to configured local printers automatically.
+  desktop:
+    StartupWMClass: PrintDrop Agent
+    Terminal: false
   target:
     - target: AppImage
       arch: [x64]
+    - target: deb
+      arch: [x64]
+
+# ── Auto-update ──────────────────────────────────────────────────────────────
+# Set GH_TOKEN env var, then `npm run release` to publish a draft release.
+publish:
+  provider: github
+  owner: Rishi-choudhary
+  repo: printdrop
+  releaseType: release
