@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { Card, CardHeader, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, RefreshCw, CheckCircle, Printer, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Copy, RefreshCw, CheckCircle, Printer, Plus, Pencil, Trash2, X, Wifi, WifiOff, Monitor } from 'lucide-react';
 
 // ─── Printer types ────────────────────────────────────────────────────────────
 interface ShopPrinter {
@@ -272,6 +272,100 @@ function PrintersSection({ shopId }: { shopId: string }) {
   );
 }
 
+// ─── Agent Status Section ──────────────────────────────────────────────────────
+function AgentStatusSection({ shopId }: { shopId: string }) {
+  const [shop, setShop] = useState<any>(null);
+  const [printers, setPrinters] = useState<ShopPrinter[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [s, p] = await Promise.all([
+          api.get(`/shops/${shopId}`),
+          api.get(`/printers/shop/${shopId}`),
+        ]);
+        setShop(s);
+        setPrinters(Array.isArray(p) ? p : []);
+      } catch {}
+    };
+    load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, [shopId]);
+
+  const isOnline = shop?.agentLastSeen
+    ? Date.now() - new Date(shop.agentLastSeen).getTime() < 2 * 60 * 1000
+    : false;
+
+  const lastSeenText = shop?.agentLastSeen
+    ? new Date(shop.agentLastSeen).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+    : 'Never';
+
+  const onlinePrinters = printers.filter((p) => p.isOnline);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Monitor className="w-4 h-4 text-gray-500" />
+          <h2 className="font-semibold">Desktop Agent Status</h2>
+        </div>
+      </CardHeader>
+      <CardBody className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium ${
+            isOnline
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : 'bg-gray-50 border-gray-200 text-gray-500'
+          }`}>
+            {isOnline
+              ? <Wifi className="w-4 h-4" />
+              : <WifiOff className="w-4 h-4" />}
+            {isOnline ? 'Agent Online' : 'Agent Offline'}
+          </div>
+          {shop?.agentVersion && (
+            <span className="text-xs text-gray-400 font-mono">v{shop.agentVersion}</span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-xs text-gray-400 mb-0.5">Last heartbeat</p>
+            <p className="font-medium text-gray-700">{lastSeenText}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 mb-0.5">Printers online</p>
+            <p className="font-medium text-gray-700">{onlinePrinters.length} / {printers.length}</p>
+          </div>
+        </div>
+
+        {onlinePrinters.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Detected Printers</p>
+            {onlinePrinters.map((p) => (
+              <div key={p.id} className="flex items-center gap-2 text-sm">
+                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                <span className="text-gray-700 font-medium">{p.name}</span>
+                {p.isDefault && (
+                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600">Default</span>
+                )}
+                <span className="text-gray-400 font-mono text-xs ml-auto truncate max-w-[160px]">{p.systemName}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isOnline && (
+          <p className="text-xs text-gray-400">
+            Install and run the PrintDrop desktop agent on your shop computer, then paste your agent key in the Connection tab.
+            The agent will appear online within 30 seconds.
+          </p>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const shopId = user?.shop?.id;
@@ -431,6 +525,12 @@ export default function SettingsPage() {
           <Button onClick={saveRates} disabled={saving}>{saving ? 'Saving...' : 'Save Rates'}</Button>
         </CardBody>
       </Card>
+
+      {/* Agent Status */}
+      {shopId && <AgentStatusSection shopId={shopId} />}
+
+      {/* Printers */}
+      {shopId && <PrintersSection shopId={shopId} />}
 
       {/* Agent Key */}
       <Card>

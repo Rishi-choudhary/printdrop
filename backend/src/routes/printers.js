@@ -29,7 +29,7 @@ async function printerRoutes(fastify) {
   fastify.post('/heartbeat', {
     preHandler: [authenticateAgent],
   }, async (request, reply) => {
-    const { printers: discovered, shopId } = request.body;
+    const { printers: discovered, shopId, agentVersion } = request.body;
     const shop = request.shop;
 
     // Verify shopId matches the agent key's shop
@@ -37,17 +37,46 @@ async function printerRoutes(fastify) {
       return reply.status(403).send({ error: 'shopId does not match agent key' });
     }
 
+    // Update agent last-seen timestamp (best-effort — column may not exist if migration is pending)
+    try {
+      const shopUpdateData = { agentLastSeen: new Date() };
+      if (agentVersion) shopUpdateData.agentVersion = agentVersion;
+      await fastify.prisma.shop.update({ where: { id: shop.id }, data: shopUpdateData });
+    } catch {
+      // Ignore — migration may not have run yet
+    }
+
     if (Array.isArray(discovered) && discovered.length > 0) {
-      // Update isOnline + lastSeen for printers we know about
       for (const d of discovered) {
         if (!d.systemName) continue;
-        await fastify.prisma.shopPrinter.updateMany({
+
+        // Auto-register new printers discovered by the agent
+        const existing = await fastify.prisma.shopPrinter.findFirst({
           where: { shopId: shop.id, systemName: d.systemName },
-          data: {
-            isOnline: d.isOnline !== false,
-            lastSeen: new Date(),
-          },
         });
+
+        if (existing) {
+          await fastify.prisma.shopPrinter.update({
+            where: { id: existing.id },
+            data: { isOnline: d.isOnline !== false, lastSeen: new Date() },
+          });
+        } else {
+          // Auto-create with no existing printers → make it default
+          const printerCount = await fastify.prisma.shopPrinter.count({ where: { shopId: shop.id } });
+          await fastify.prisma.shopPrinter.create({
+            data: {
+              shopId: shop.id,
+              name: d.displayName || d.systemName,
+              systemName: d.systemName,
+              isDefault: printerCount === 0,
+              supportsColor: true,
+              supportsDuplex: false,
+              supportsA3: false,
+              isOnline: true,
+              lastSeen: new Date(),
+            },
+          });
+        }
       }
 
       // Mark printers NOT in the discovered list as offline

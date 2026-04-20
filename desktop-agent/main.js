@@ -470,7 +470,11 @@ function registerIpcHandlers() {
       });
       if (!res.ok) {
         const body = await res.text().catch(() => '');
-        return { ok: false, error: `Invalid agent key (${res.status})` };
+        let msg = `Server returned ${res.status}`;
+        if (res.status === 401) msg = 'Invalid agent key — check the key is correct and not expired.';
+        else if (res.status === 403) msg = 'Agent key does not match this shop.';
+        else if (res.status >= 500) msg = `Server error (${res.status}) — check backend logs. ${body.slice(0, 120)}`;
+        return { ok: false, error: msg };
       }
       const data = await res.json();
       return { ok: true, shopId: data.shopId, shopName: data.shopName || '' };

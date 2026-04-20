@@ -54,6 +54,10 @@ model Shop {
   // Auto-print mode
   autoPrint     Boolean @default(false)
 
+  // Desktop agent connection tracking
+  agentLastSeen DateTime?
+  agentVersion  String?
+
   // Operating hours
   opensAt       String  @default("09:00")
   closesAt      String  @default("21:00")

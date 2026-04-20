@@ -114,10 +114,12 @@ function getState() {
 async function sendHeartbeat() {
   try {
     const osPrinters = await getAvailablePrinters().catch(() => []);
+    const pkgVersion = (() => { try { return require('../../package.json').version; } catch { return undefined; } })();
     const data = await apiFetch('/api/printers/heartbeat', {
       method: 'POST',
       body: JSON.stringify({
-        printers: osPrinters.map((name) => ({ systemName: name, isOnline: true })),
+        printers: osPrinters.map((name) => ({ systemName: name, displayName: name, isOnline: true })),
+        agentVersion: pkgVersion,
       }),
     });
     _connected = true;

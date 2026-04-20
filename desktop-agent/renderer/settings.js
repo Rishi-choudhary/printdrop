@@ -42,8 +42,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 function applyConfig() {
   if (!_config) return;
 
-  // Connection
-  document.getElementById('apiUrl').value = _config.apiUrl || 'https://printdrop.app';
+  // Connection — auto-correct old localhost configs to the live server
+  const rawUrl = _config.apiUrl || '';
+  const correctedUrl = (rawUrl.includes('localhost') || rawUrl.includes('127.0.0.1'))
+    ? 'https://printdrop.app'
+    : rawUrl || 'https://printdrop.app';
+  document.getElementById('apiUrl').value = correctedUrl;
   document.getElementById('agentKey').value = _config.agentKey || '';
 
   // Sidebar shop info

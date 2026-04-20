@@ -16,7 +16,13 @@ import { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import Cookies from 'js-cookie';
 
-const API_BASE = '/api';
+// Upload directly to the backend when NEXT_PUBLIC_API_URL is set, bypassing
+// Vercel's rewrite proxy (which has a 4.5 MB body-size limit that kills large
+// mobile photo uploads). Falls back to the rewrite proxy for local dev.
+const UPLOAD_URL =
+  process.env.NEXT_PUBLIC_API_URL
+    ? `${process.env.NEXT_PUBLIC_API_URL}/api/files/upload`
+    : '/api/files/upload';
 
 const ACCEPTED = ['application/pdf', 'image/jpeg', 'image/png',
   'application/msword',
@@ -117,7 +123,7 @@ export function FileUpload({ onUploaded, onClear, disabled, className = '' }: Pr
       xhr.addEventListener('error',   () => reject(new Error('Network error. Check your connection.')));
       xhr.addEventListener('timeout', () => reject(new Error('Upload timed out. Try a smaller file.')));
 
-      xhr.open('POST', `${API_BASE}/files/upload`);
+      xhr.open('POST', UPLOAD_URL);
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.timeout = 120_000; // 2 min
       xhr.send(formData);
