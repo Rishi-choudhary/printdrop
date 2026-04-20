@@ -284,6 +284,76 @@ async function stampTokenOnFirstPage(documentPath, token) {
   return tmpPath;
 }
 
+/**
+ * Add a token stamp page that will print on the back of the first or last
+ * physical sheet when duplex-printed.
+ *
+ * position: 'back-first' — inserts the stamp page as page 2 (back of sheet 1 in duplex)
+ * position: 'back-last'  — appends the stamp page at the end (with a blank page pad when
+ *                           the original has an odd count, so the stamp lands on the back
+ *                           of the last physical sheet in duplex)
+ * corner: 'bottom-left' | 'bottom-right'
+ *
+ * Returns the path to a new temp PDF (caller must delete it).
+ */
+async function addTokenBackPage(documentPath, token, options = {}) {
+  const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+  const { position = 'back-last', corner = 'bottom-right' } = options;
+
+  const docBytes = await fs.promises.readFile(documentPath);
+  const srcDoc = await PDFDocument.load(docBytes, { ignoreEncryption: true });
+  const srcCount = srcDoc.getPageCount();
+
+  const refPage = srcDoc.getPage(0);
+  const { width, height } = refPage.getSize();
+
+  // Build the token-stamp page in a temporary single-page doc so we can copy it
+  const stampDoc = await PDFDocument.create();
+  const stampPage = stampDoc.addPage([width, height]);
+
+  const boldFont   = await stampDoc.embedFont(StandardFonts.HelveticaBold);
+  const regularFont = await stampDoc.embedFont(StandardFonts.Helvetica);
+
+  const tokenStr  = `#${String(token).padStart(3, '0')}`;
+  const fontSize  = 72;
+  const textWidth = boldFont.widthOfTextAtSize(tokenStr, fontSize);
+  const margin    = 40;
+
+  const x = corner === 'bottom-left' ? margin : width - textWidth - margin;
+  const y = margin;
+
+  stampPage.drawText(tokenStr, { x, y, size: fontSize, font: boldFont, color: rgb(0.08, 0.08, 0.08) });
+
+  const label     = 'PRINTDROP TOKEN';
+  const labelSize = 9;
+  const labelW    = regularFont.widthOfTextAtSize(label, labelSize);
+  const labelX    = corner === 'bottom-left' ? margin : width - labelW - margin;
+  stampPage.drawText(label, { x: labelX, y: y + fontSize + 8, size: labelSize, font: regularFont, color: rgb(0.5, 0.5, 0.5) });
+
+  // Assemble final doc in the correct page order
+  const outDoc = await PDFDocument.create();
+  const srcPages  = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+  const [stampCopy] = await outDoc.copyPages(stampDoc, [0]);
+
+  if (position === 'back-first') {
+    // [page0, stampPage, page1, page2, ...]  → stamp on back of physical sheet 1
+    outDoc.addPage(srcPages[0]);
+    outDoc.addPage(stampCopy);
+    for (let i = 1; i < srcPages.length; i++) outDoc.addPage(srcPages[i]);
+  } else {
+    // back-last: add all original pages
+    for (const p of srcPages) outDoc.addPage(p);
+    // If odd page count, add a blank so stamp lands on the back of the last sheet
+    if (srcCount % 2 !== 0) outDoc.addPage([width, height]);
+    outDoc.addPage(stampCopy);
+  }
+
+  const pdfBytes = await outDoc.save();
+  const tmpPath  = path.join(os.tmpdir(), `printdrop_tokenback_${Date.now()}.pdf`);
+  fs.writeFileSync(tmpPath, pdfBytes);
+  return tmpPath;
+}
+
 module.exports = {
   parsePageRange,
   extractPages,
@@ -291,4 +361,5 @@ module.exports = {
   generateCoverPage,
   prependCoverPage,
   stampTokenOnFirstPage,
+  addTokenBackPage,
 };

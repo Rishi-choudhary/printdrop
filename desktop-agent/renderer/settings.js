@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   wirePreferences();
   wireAdvanced();
   wireAbout();
+  wireHistory();
 
   // Reveal-key toggle
   document.getElementById('revealKey').addEventListener('click', () => {
@@ -60,8 +61,10 @@ function applyConfig() {
   document.getElementById('colorPaperSize').value = _config.colorPaperSize || 'A4';
   document.getElementById('colorDuplex').value = _config.colorDuplex || 'simplex';
 
-  // Preferences
-  document.getElementById('prefCoverPage').checked = !!_config.coverPage;
+  // Preferences — token stamp position (with backwards compat for old coverPage bool)
+  const savedPos = _config.tokenStampPosition ||
+    (_config.coverPage ? 'front-top-right' : 'none');
+  document.getElementById('tokenStampPosition').value = savedPos;
   document.getElementById('prefSounds').checked = _config.soundEnabled !== false;
   document.getElementById('prefAutoStart').checked = _config.autoStart !== false;
   document.getElementById('prefNotifications').checked = _config.notificationsEnabled !== false;
@@ -72,15 +75,30 @@ function applyConfig() {
 }
 
 function populatePrinters() {
-  const bwSel = document.getElementById('bwPrinter');
+  const bwSel  = document.getElementById('bwPrinter');
   const colSel = document.getElementById('colorPrinter');
+  const detectedEl = document.getElementById('printerListDetected');
+
+  if (_detectedPrinters.length === 0) {
+    bwSel.innerHTML  = '<option value="">No printers detected — click Rescan</option>';
+    colSel.innerHTML = '<option value="">— No color printer —</option>';
+    detectedEl.innerHTML = '<div class="field-hint" style="padding:4px 0; color:var(--warning);">No printers found. Make sure a printer is installed and click Rescan.</div>';
+    return;
+  }
 
   const opts = _detectedPrinters
     .map((p) => `<option value="${escAttr(p)}">${escHtml(p)}</option>`)
     .join('');
 
-  bwSel.innerHTML = opts || '<option value="">No printers detected</option>';
+  bwSel.innerHTML  = opts;
   colSel.innerHTML = `<option value="">— No color printer —</option>${opts}`;
+
+  detectedEl.innerHTML = _detectedPrinters.map((p) => `
+    <div style="display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--border);">
+      <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;"></span>
+      <span style="font-size:12px; color:var(--text-1); flex:1;">${escHtml(p)}</span>
+    </div>
+  `).join('');
 }
 
 async function loadSystemInfo() {
@@ -220,13 +238,82 @@ function wirePreferences() {
   const banner = document.getElementById('prefsBanner');
 
   document.getElementById('savePrefsBtn').addEventListener('click', async () => {
+    const stampPos = document.getElementById('tokenStampPosition').value;
     await window.printdrop.updateConfig({
-      coverPage:            document.getElementById('prefCoverPage').checked,
+      tokenStampPosition:   stampPos,
+      // Keep coverPage in sync for backwards compat with older agent builds
+      coverPage:            stampPos !== 'none',
       soundEnabled:         document.getElementById('prefSounds').checked,
       autoStart:            document.getElementById('prefAutoStart').checked,
       notificationsEnabled: document.getElementById('prefNotifications').checked,
     });
     showBanner(banner, 'success', '✓ Preferences saved.');
+  });
+}
+
+// ── Wire: History ──────────────────────────────────────────────────────────
+
+let _historyJobs = [];
+
+async function loadHistory() {
+  const result = await window.printdrop.getHistory().catch(() => ({ jobs: [] }));
+  _historyJobs = result.jobs || [];
+  renderHistoryTable(_historyJobs);
+}
+
+function renderHistoryTable(jobs) {
+  const tbody = document.getElementById('historyTableBody');
+  if (!tbody) return;
+
+  const search = (document.getElementById('historySearch')?.value || '').toLowerCase().trim();
+  const filtered = jobs.filter((j) => {
+    if (!search) return true;
+    return `${j.token} ${j.fileName} ${j.printerName || ''}`.toLowerCase().includes(search);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="padding:24px; text-align:center; color:var(--text-3);">No jobs found</td></tr>`;
+    return;
+  }
+
+  const statusColors = {
+    ready:     { bg: '#dcfce7', color: '#166534' },
+    printing:  { bg: '#fef9c3', color: '#854d0e' },
+    queued:    { bg: '#dbeafe', color: '#1e40af' },
+    cancelled: { bg: '#fee2e2', color: '#991b1b' },
+  };
+
+  tbody.innerHTML = filtered.map((j) => {
+    const sc = statusColors[j.status] || { bg: '#f3f4f6', color: '#374151' };
+    const time = j.processedAt ? new Date(j.processedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+    return `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px 12px; font-weight:700; font-family:monospace;">#${String(j.token).padStart(3,'0')}</td>
+        <td style="padding:8px 12px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escAttr(j.fileName)}">${escHtml(j.fileName)}</td>
+        <td style="padding:8px 12px;">${j.pageCount || '—'}</td>
+        <td style="padding:8px 12px;">${j.color ? 'Color' : 'B&W'}${j.copies > 1 ? ` ×${j.copies}` : ''}</td>
+        <td style="padding:8px 12px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(j.printerName || '—')}</td>
+        <td style="padding:8px 12px;">
+          <span style="padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; background:${sc.bg}; color:${sc.color};">
+            ${j.status.toUpperCase()}
+          </span>
+        </td>
+        <td style="padding:8px 12px; color:var(--text-3);">${time}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function wireHistory() {
+  document.getElementById('refreshHistoryBtn')?.addEventListener('click', loadHistory);
+  document.getElementById('historySearch')?.addEventListener('input', () => {
+    renderHistoryTable(_historyJobs);
+  });
+  // Load when the history tab is first activated
+  document.querySelectorAll('.nav-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tab === 'history') loadHistory();
+    });
   });
 }
 

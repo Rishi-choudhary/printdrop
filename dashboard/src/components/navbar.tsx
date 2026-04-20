@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import {
   Printer, LogOut, LayoutDashboard, Settings, BarChart3,
-  Shield, Users, Store, FileText, Menu, X, User, Plus,
+  Shield, Users, Store, FileText, Menu, X, User, Plus, History,
 } from 'lucide-react';
 
 export function Navbar() {
@@ -37,10 +37,11 @@ export function Navbar() {
     { href: '/dashboard',           label: 'Queue',      icon: <LayoutDashboard className="w-4 h-4" />, show: isShopkeeper || isAdmin },
     { href: '/dashboard/settings',  label: 'Settings',   icon: <Settings className="w-4 h-4" />,        show: isShopkeeper || isAdmin },
     { href: '/dashboard/analytics', label: 'Analytics',  icon: <BarChart3 className="w-4 h-4" />,       show: isShopkeeper || isAdmin },
+    { href: '/dashboard/history',  label: 'History',    icon: <History className="w-4 h-4" />,          show: isShopkeeper },
     { href: '/admin',               label: 'Admin',      icon: <Shield className="w-4 h-4" />,          show: isAdmin },
     { href: '/admin/shops',         label: 'Shops',      icon: <Store className="w-4 h-4" />,           show: isAdmin },
     { href: '/admin/users',         label: 'Users',      icon: <Users className="w-4 h-4" />,           show: isAdmin },
-    { href: '/admin/jobs',          label: 'Jobs',       icon: <FileText className="w-4 h-4" />,        show: isAdmin },
+    { href: '/admin/jobs',          label: 'History',    icon: <History className="w-4 h-4" />,         show: isAdmin },
   ];
 
   const visibleLinks = links.filter(l => l.show);

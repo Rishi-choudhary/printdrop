@@ -46,7 +46,7 @@ export function useAdminShops() {
 
 export function useAdminJobs(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString();
-  return useSWR(`/admin/jobs${params ? `?${params}` : ''}`, fetcher);
+  return useSWR(`/admin/jobs${params ? `?${params}` : ''}`, fetcher, { refreshInterval: 15000 });
 }
 
 export function useAdminRevenue(days = 30) {
@@ -59,4 +59,13 @@ export function useUserProfile() {
 
 export function useUserJobs() {
   return useSWR('/users/me/jobs', fetcher);
+}
+
+export function useShopHistory(shopId: string | undefined, page = 0, limit = 50) {
+  const params = new URLSearchParams({ status: 'completed', limit: String(limit), offset: String(page * limit) }).toString();
+  return useSWR(
+    shopId ? `/jobs?${params}` : null,
+    fetcher,
+    { refreshInterval: 30000 }
+  );
 }

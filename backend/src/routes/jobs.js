@@ -20,7 +20,11 @@ async function jobRoutes(fastify) {
     }
     // Admin sees all
 
-    if (status) where.status = status;
+    if (status === 'completed') {
+      where.status = { in: ['picked_up', 'cancelled'] };
+    } else if (status) {
+      where.status = status;
+    }
 
     const [jobs, total] = await Promise.all([
       fastify.prisma.job.findMany({

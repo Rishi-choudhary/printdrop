@@ -37,6 +37,9 @@ contextBridge.exposeInMainWorld('printdrop', {
   togglePin: () =>
     ipcRenderer.invoke('dashboard:toggle-pin'),
 
+  getHistory: () =>
+    ipcRenderer.invoke('dashboard:get-history'),
+
   // ── Settings ──────────────────────────────────────────────────────────────
 
   getConfig: () =>

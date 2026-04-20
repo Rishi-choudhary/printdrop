@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   Printer, CheckCircle, Zap, ZapOff, Volume2, VolumeX,
   RefreshCw, IndianRupee, FileText, Layers, Palette, Copy as CopyIcon,
-  WifiOff, Settings, BarChart3, LogOut,
+  WifiOff, Settings, BarChart3, LogOut, History,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
@@ -349,6 +349,10 @@ export default function KDSPage() {
             <Link href="/dashboard/analytics" title="Analytics"
               className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
               <BarChart3 className="w-4 h-4" />
+            </Link>
+            <Link href="/dashboard/history" title="Print History"
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <History className="w-4 h-4" />
             </Link>
 
             <button onClick={audio.toggle} title="Toggle sound"

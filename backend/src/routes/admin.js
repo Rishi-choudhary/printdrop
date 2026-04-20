@@ -124,7 +124,11 @@ async function adminRoutes(fastify) {
     const { status, shopId, date, limit = 50, offset = 0 } = request.query;
 
     const where = {};
-    if (status) where.status = status;
+    if (status === 'completed') {
+      where.status = { in: ['picked_up', 'cancelled'] };
+    } else if (status) {
+      where.status = status;
+    }
     if (shopId) where.shopId = shopId;
     if (date) {
       const dayStart = new Date(date);

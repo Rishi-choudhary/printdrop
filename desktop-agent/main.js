@@ -164,12 +164,29 @@ app.on('second-instance', () => {
 function initTray() {
   tray = new Tray(ICONS.idle);
   tray.setToolTip('PrintDrop Agent');
-  rebuildTrayMenu();
-  tray.on('click', () => toggleDashboard());
+
+  // Left-click → toggle the dashboard popup on all platforms.
+  // On macOS, setContextMenu prevents the click event from firing, so we
+  // never call setContextMenu there. Instead we pop the menu on right-click.
+  tray.on('click',        () => toggleDashboard());
   tray.on('double-click', () => toggleDashboard());
+  tray.on('right-click',  () => tray.popUpContextMenu(buildTrayMenu()));
+
+  if (!IS_MAC) {
+    // Windows / Linux: context menu also appears on the standard right-click
+    // interaction via setContextMenu so users familiar with that pattern still
+    // get the menu. popUpContextMenu above is the fallback / explicit path.
+    tray.setContextMenu(buildTrayMenu());
+  }
 }
 
 function rebuildTrayMenu() {
+  if (!IS_MAC && tray && !tray.isDestroyed()) {
+    tray.setContextMenu(buildTrayMenu());
+  }
+}
+
+function buildTrayMenu() {
   const cfg = config.load();
   const u = updater.getState();
 
@@ -186,11 +203,11 @@ function rebuildTrayMenu() {
     return { label: 'Check for Updates…', click: () => updater.checkAndPromptInstall() };
   })();
 
-  const menu = Menu.buildFromTemplate([
+  return Menu.buildFromTemplate([
     { label: `PrintDrop Agent v${app.getVersion()}`, enabled: false },
     { type: 'separator' },
     { label: 'Open Dashboard', click: showDashboard },
-    { label: 'Settings…', click: openSettingsWindow },
+    { label: 'Settings…',     click: openSettingsWindow },
     { type: 'separator' },
     updateEntry,
     {
@@ -211,7 +228,6 @@ function rebuildTrayMenu() {
     { type: 'separator' },
     { label: 'Quit PrintDrop', click: () => app.quit() },
   ]);
-  tray.setContextMenu(menu);
 }
 
 function setTrayIcon(state) {
@@ -509,6 +525,12 @@ function registerIpcHandlers() {
     const state = agent.getState();
     state.pollIntervalMs = config.load().pollIntervalMs;
     return state;
+  });
+
+  ipcMain.handle('dashboard:get-history', () => {
+    const state = agent.getState();
+    // Return all 50 recent jobs (not just the 20 sent to the live dashboard)
+    return { jobs: state.recentJobs || [] };
   });
 
   ipcMain.handle('dashboard:toggle-pin', () => {

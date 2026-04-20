@@ -17,7 +17,7 @@ const path = require('path');
 const os = require('os');
 
 const { printFile, getAvailablePrinters } = require('./printer');
-const { prepareForPrinting, stampTokenOnFirstPage } = require('./pdf-utils');
+const { prepareForPrinting, stampTokenOnFirstPage, addTokenBackPage } = require('./pdf-utils');
 const { downloadFile } = require('./downloader');
 const { wrapImageAsPdf } = require('./image-to-pdf');
 const processedJobs = require('./processed-jobs');
@@ -114,7 +114,7 @@ function getState() {
 async function sendHeartbeat() {
   try {
     const osPrinters = await getAvailablePrinters().catch(() => []);
-    await apiFetch('/api/printers/heartbeat', {
+    const data = await apiFetch('/api/printers/heartbeat', {
       method: 'POST',
       body: JSON.stringify({
         printers: osPrinters.map((name) => ({ systemName: name, isOnline: true })),
@@ -122,6 +122,10 @@ async function sendHeartbeat() {
     });
     _connected = true;
     _lastHeartbeatAt = new Date().toISOString();
+    // Refresh shopName from server in case it was renamed
+    if (data?.shopName && data.shopName !== _config.shopName) {
+      _config.shopName = data.shopName;
+    }
     _callbacks.onHeartbeat?.();
     logger.debug('Heartbeat OK');
   } catch (err) {
@@ -275,10 +279,19 @@ async function processJob(job) {
     }
   }
 
-  // ── Step 5: Stamp token # on top-right of first page if enabled ───────────
-  if (_config.coverPage) {
+  // ── Step 5: Stamp token based on configured position ─────────────────────
+  const stampPos = _config.tokenStampPosition ||
+    (_config.coverPage ? 'front-top-right' : 'none');
+  if (stampPos && stampPos !== 'none') {
     try {
-      const stampedPath = await stampTokenOnFirstPage(printPath, job.token);
+      let stampedPath;
+      if (stampPos === 'front-top-right') {
+        stampedPath = await stampTokenOnFirstPage(printPath, job.token);
+      } else {
+        const position = stampPos.startsWith('back-first') ? 'back-first' : 'back-last';
+        const corner   = stampPos.endsWith('left') ? 'bottom-left' : 'bottom-right';
+        stampedPath = await addTokenBackPage(printPath, job.token, { position, corner });
+      }
       if (isTmp) _unlink(printPath);
       printPath = stampedPath;
       isTmp = true;
