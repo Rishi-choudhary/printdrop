@@ -238,8 +238,8 @@ function printOnWindowsChromium(filePath, { printerName, copies, doubleSided, co
   });
 }
 
-// ─── Test print — HTML (always works, no PDF rendering needed) ────────────────
-// Called from setup wizard to verify printer connectivity.
+// ─── Test print ───────────────────────────────────────────────────────────────
+// Called from setup wizard/settings to verify local printer connectivity.
 function printTestPage(printerName, color = false) {
   const { BrowserWindow } = require('electron');
 
@@ -265,33 +265,69 @@ function printTestPage(printerName, color = false) {
   <p class="ok">&#10003; If you can read this, your printer is configured correctly.</p>
   </body></html>`;
 
-  if (platform !== 'win32') {
-    return Promise.resolve({ success: true, output: 'Test page sent' });
-  }
-
   return new Promise((resolve, reject) => {
     const win = new BrowserWindow({ show: false });
+    let settled = false;
+    let timeout = null;
+
+    const finish = (err, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      setTimeout(() => { if (!win.isDestroyed()) win.close(); }, 3000);
+      if (err) reject(err);
+      else resolve(result);
+    };
+
     win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 
-    win.webContents.once('did-finish-load', () => {
-      setTimeout(() => {
-        win.webContents.print(
-          { silent: true, deviceName: printerName || '', copies: 1, color: !!color },
-          (success, reason) => {
-            setTimeout(() => { if (!win.isDestroyed()) win.close(); }, 3000);
-            if (success) resolve({ success: true, output: `Test page sent to ${printerName || 'default'}` });
-            else reject(new Error(`Print failed: ${reason || 'unknown'}`));
-          },
-        );
-      }, 500);
+    win.webContents.once('did-finish-load', async () => {
+      try {
+        await sleep(500);
+
+        if (platform === 'win32') {
+          win.webContents.print(
+            { silent: true, deviceName: printerName || '', copies: 1, color: !!color },
+            (success, reason) => {
+              if (success) finish(null, { success: true, output: `Test page sent to ${printerName || 'default'}` });
+              else finish(new Error(`Print failed: ${reason || 'unknown'}`));
+            },
+          );
+          return;
+        }
+
+        const pdf = await win.webContents.printToPDF({
+          printBackground: true,
+          pageSize: 'A4',
+          margins: { marginType: 'default' },
+        });
+        const tmpPath = path.join(os.tmpdir(), `printdrop_test_${Date.now()}.pdf`);
+        fs.writeFileSync(tmpPath, pdf);
+
+        try {
+          const result = await printFile(tmpPath, {
+            printerName,
+            copies: 1,
+            doubleSided: false,
+            color: !!color,
+            paperSize: 'A4',
+          });
+          finish(null, { success: true, output: result.output || `Test page sent to ${printerName || 'default'}` });
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+      } catch (err) {
+        finish(err);
+      }
     });
 
     win.webContents.once('did-fail-load', (_e, code, desc) => {
-      win.close();
-      reject(new Error(`Load failed (${code}): ${desc}`));
+      finish(new Error(`Load failed (${code}): ${desc}`));
     });
 
-    setTimeout(() => { if (!win.isDestroyed()) { win.close(); reject(new Error('Timeout')); } }, 30000);
+    timeout = setTimeout(() => {
+      finish(new Error('Timeout'));
+    }, 30000);
   });
 }
 

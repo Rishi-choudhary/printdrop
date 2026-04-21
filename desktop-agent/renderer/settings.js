@@ -42,11 +42,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 function applyConfig() {
   if (!_config) return;
 
-  // Connection — auto-correct old localhost configs to the live server
+  // Connection — migrate old API URLs to the dedicated API subdomain
   const rawUrl = _config.apiUrl || '';
-  const correctedUrl = (rawUrl.includes('localhost') || rawUrl.includes('127.0.0.1'))
-    ? 'https://printdrop.app'
-    : rawUrl || 'https://printdrop.app';
+  const isOldUrl =
+    rawUrl.includes('localhost') ||
+    rawUrl.includes('127.0.0.1') ||
+    rawUrl === 'https://printdrop.app' ||
+    rawUrl === 'https://www.printdrop.app' ||
+    rawUrl.includes('railway.app') ||
+    rawUrl.includes('render.com');
+  const correctedUrl = isOldUrl ? 'https://api.printdrop.app' : rawUrl || 'https://api.printdrop.app';
   document.getElementById('apiUrl').value = correctedUrl;
   document.getElementById('agentKey').value = _config.agentKey || '';
 

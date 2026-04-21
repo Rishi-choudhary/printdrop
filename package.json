@@ -5,14 +5,12 @@
   "description": "Smart print shop automation — WhatsApp & Telegram bot + Dashboard",
   "workspaces": [
     "backend",
-    "dashboard",
-    "print-agent"
+    "dashboard"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w dashboard\"",
     "dev:backend": "npm run dev -w backend",
     "dev:dashboard": "npm run dev -w dashboard",
-    "dev:agent": "npm run dev -w print-agent",
     "db:push": "npx prisma db push",
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio",
