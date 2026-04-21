@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   Printer, CheckCircle, Zap, ZapOff, Volume2, VolumeX,
   RefreshCw, IndianRupee, FileText, Layers, Palette, Copy as CopyIcon,
-  WifiOff, Settings, BarChart3, LogOut, History,
+  WifiOff, Settings, BarChart3, LogOut, History, MonitorOff,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
@@ -144,27 +144,18 @@ function JobCard({ job, autoMode, onAction, isUpdating, audio }: {
       {/* Actions */}
       {['queued', 'printing', 'ready'].includes(job.status) && (
         <div className="flex gap-2 mt-1">
-          {job.status === 'queued' && !autoMode && (
-            <button onClick={() => { audio.printSound(); onAction(job.id, 'printing'); }}
-              disabled={isUpdating}
-              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm uppercase tracking-wider bg-orange-500 hover:bg-orange-600 active:scale-95 text-white transition-all disabled:opacity-50 shadow-md shadow-orange-200">
-              <Printer className="w-5 h-5" /> PRINT
-            </button>
-          )}
-          {job.status === 'queued' && autoMode && (
-            <div className="flex-1 py-3 rounded-xl text-center text-xs text-gray-400 bg-gray-100 border border-gray-200">
-              Auto-printing…
+          {job.status === 'queued' && (
+            <div className="flex-1 py-2.5 rounded-xl text-center text-xs text-gray-400 bg-gray-50 border border-gray-200 font-medium">
+              {autoMode ? 'Waiting for desktop agent to print…' : 'Waiting — open desktop agent to print'}
             </div>
           )}
           {job.status === 'printing' && (
-            <button onClick={() => { audio.readySound(); onAction(job.id, 'ready'); }}
-              disabled={isUpdating}
-              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm uppercase tracking-wider bg-green-600 hover:bg-green-700 active:scale-95 text-white transition-all disabled:opacity-50 shadow-md shadow-green-200">
-              <CheckCircle className="w-5 h-5" /> MARK READY
-            </button>
+            <div className="flex-1 py-2.5 rounded-xl text-center text-xs text-amber-600 bg-amber-50 border border-amber-200 font-bold animate-pulse">
+              Printing via desktop agent…
+            </div>
           )}
           {job.status === 'ready' && (
-            <button onClick={() => onAction(job.id, 'picked_up')}
+            <button onClick={() => { audio.readySound(); onAction(job.id, 'picked_up'); }}
               disabled={isUpdating}
               className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-black text-sm uppercase tracking-wider bg-gray-200 hover:bg-gray-300 active:scale-95 text-gray-700 transition-all disabled:opacity-50">
               <CheckCircle className="w-4 h-4" /> PICKED UP
@@ -240,6 +231,8 @@ export default function KDSPage() {
   const audio                   = useAudio();
   const { toast }               = useToast();
 
+  // autoPrint is the backend's source of truth; localStorage is just a cache to
+  // avoid a flash of the wrong state before the user's shop data loads.
   const [autoMode, setAutoMode] = useState(() =>
     typeof window !== 'undefined' && localStorage.getItem('kds_auto') === 'true'
   );
@@ -265,6 +258,14 @@ export default function KDSPage() {
     revenue:  stats?.today?.revenue || 0,
   };
 
+  // Sync autoMode from backend once shop data loads
+  useEffect(() => {
+    if (user?.shop?.autoPrint !== undefined) {
+      setAutoMode(user.shop.autoPrint);
+      localStorage.setItem('kds_auto', String(user.shop.autoPrint));
+    }
+  }, [user?.shop?.autoPrint]); // eslint-disable-line
+
   // Detect new jobs and ready transitions
   useEffect(() => {
     if (!allJobs.length) return;
@@ -284,18 +285,6 @@ export default function KDSPage() {
     prevStatus.current = Object.fromEntries(allJobs.map(j => [j.id, j.status]));
   }, [allJobs]); // eslint-disable-line
 
-  // Auto-mode: forward first queued job to printing when nothing is printing
-  useEffect(() => {
-    if (!autoMode) return;
-    const printing = active.filter(j => j.status === 'printing');
-    const queued   = active.filter(j => j.status === 'queued');
-    if (printing.length === 0 && queued.length > 0) {
-      api.patch(`/jobs/${queued[0].id}/status`, { status: 'printing' }).then(() => mutate()).catch(() => {
-        toast('Auto-print failed — try printing manually', 'error');
-      });
-    }
-  }, [allJobs, autoMode]); // eslint-disable-line
-
   const handleAction = async (id: string, status: string) => {
     setUpdating(id);
     try { await api.patch(`/jobs/${id}/status`, { status }); mutate(); }
@@ -307,8 +296,20 @@ export default function KDSPage() {
     const next = !autoMode;
     setAutoMode(next);
     localStorage.setItem('kds_auto', String(next));
-    if (user?.shop?.id) api.patch(`/shops/${user.shop.id}`, { autoPrint: next }).catch(() => {});
+    if (user?.shop?.id) {
+      api.patch(`/shops/${user.shop.id}`, { autoPrint: next }).catch(() => {
+        // Revert optimistic update if backend fails
+        setAutoMode(!next);
+        localStorage.setItem('kds_auto', String(!next));
+        toast('Failed to update print mode', 'error');
+      });
+    }
   };
+
+  // Agent is considered online if it sent a heartbeat in the last 2 minutes
+  const agentOnline = user?.shop?.agentLastSeen
+    ? Date.now() - new Date(user.shop.agentLastSeen as string).getTime() < 2 * 60 * 1000
+    : false;
 
   const dateStr = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 
@@ -394,6 +395,14 @@ export default function KDSPage() {
         </div>
       )}
 
+      {/* ─── Agent offline warning ─── */}
+      {!agentOnline && (
+        <div className="mx-4 mt-3 flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium">
+          <MonitorOff className="w-4 h-4 shrink-0" />
+          Desktop agent offline — printing requires the agent to be running on the shop computer.
+        </div>
+      )}
+
       {/* ─── Content ─── */}
       <main className="p-4 lg:p-5">
 
@@ -403,8 +412,14 @@ export default function KDSPage() {
             autoMode ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-gray-200 text-gray-500'
           }`}>
             {autoMode ? <Zap className="w-3 h-3" /> : <ZapOff className="w-3 h-3" />}
-            {autoMode ? 'Auto-print — jobs print automatically in order' : 'Manual mode — tap PRINT to start each job'}
+            {autoMode ? 'Auto-print — desktop agent prints jobs automatically' : 'Manual mode — use desktop agent to print each job'}
           </span>
+          {agentOnline && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-green-700">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+              Agent Online
+            </span>
+          )}
         </div>
 
         {/* Active jobs */}

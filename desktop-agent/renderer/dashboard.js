@@ -4,6 +4,7 @@ let _state = null;
 let _filter = 'all';
 let _search = '';
 let _theme = localStorage.getItem('pd-theme') || 'dark';
+let _actionInProgress = null; // job ID currently being acted on
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     pinBtn.title = result.pinned ? 'Unpin window' : 'Pin window';
   });
 
+  // Mode toggle
+  document.getElementById('modeBtn').addEventListener('click', async () => {
+    const nextMode = !(_state?.autoPrint || false);
+    const btn = document.getElementById('modeBtn');
+    btn.disabled = true;
+    const result = await window.printdrop.setMode(nextMode);
+    btn.disabled = false;
+    if (result.ok && _state) {
+      _state.autoPrint = nextMode;
+      renderModeBtn(nextMode);
+    }
+  });
+
   // Search
   document.getElementById('searchInput').addEventListener('input', (e) => {
     _search = e.target.value.toLowerCase().trim();
@@ -70,22 +84,25 @@ function applyTheme(theme) {
 function renderState(state) {
   if (!state) return;
 
-  // Status
   const dot = document.getElementById('statusDot');
   dot.className = 'status-dot' + (state.connected ? ' connected' : ' error');
 
   document.getElementById('shopName').textContent = state.shopName || 'PrintDrop Agent';
   const shopStatus = document.getElementById('shopStatus');
+  const modeLabel = state.autoPrint ? 'Auto-Print' : 'Manual';
   shopStatus.textContent = state.connected
-    ? (state.lastPollAt ? `Connected · polling every ${Math.round((state.pollIntervalMs || 4000)/1000)}s` : 'Connected')
+    ? (state.lastPollAt ? `Connected · ${modeLabel}` : 'Connected')
     : 'Offline — check connection';
 
-  // Stats
-  document.getElementById('statPrinted').textContent = state.stats?.printedToday ?? 0;
-  document.getElementById('statQueue').textContent = state.stats?.inQueue ?? 0;
-  document.getElementById('statFailed').textContent = state.stats?.failedToday ?? 0;
+  renderModeBtn(state.autoPrint);
 
-  // Last poll
+  // Stats — use serverQueue counts when available
+  const stats = state.stats || {};
+  document.getElementById('statPrinted').textContent = stats.printedToday ?? 0;
+  document.getElementById('statQueue').textContent =
+    (stats.queued ?? 0) + (stats.printing ?? 0);
+  document.getElementById('statFailed').textContent = stats.failedToday ?? 0;
+
   const lastPoll = document.getElementById('lastPoll');
   lastPoll.textContent = state.lastPollAt
     ? `Last check ${timeSince(state.lastPollAt)} ago`
@@ -95,9 +112,28 @@ function renderState(state) {
   renderPrinters();
 }
 
+function renderModeBtn(autoPrint) {
+  const btn = document.getElementById('modeBtn');
+  const label = document.getElementById('modeBtnLabel');
+  if (!btn || !label) return;
+  label.textContent = autoPrint ? 'Auto' : 'Manual';
+  btn.classList.toggle('mode-auto', autoPrint);
+}
+
 function renderJobList() {
   const jobList = document.getElementById('jobList');
-  const jobs = (_state?.recentJobs || []).filter(passesFilter);
+
+  // Merge serverQueue (live jobs) with recentJobs (completed/local) for display.
+  // serverQueue has live queued/printing/ready jobs from backend.
+  // recentJobs has recently processed jobs.
+  const serverQueue = _state?.serverQueue || [];
+  const serverIds = new Set(serverQueue.map((j) => j.id));
+
+  // For display: server queue first, then recent local jobs not in server queue
+  const recentOnly = (_state?.recentJobs || []).filter((j) => !serverIds.has(j.id));
+  const allJobs = [...serverQueue, ...recentOnly];
+
+  const jobs = allJobs.filter(passesFilter);
 
   if (jobs.length === 0) {
     jobList.innerHTML = `
@@ -114,31 +150,109 @@ function renderJobList() {
     return;
   }
 
+  const autoPrint = _state?.autoPrint || false;
+
   jobList.innerHTML = jobs.map((job) => {
     const token = String(job.token).padStart(3, '0');
-    const metaParts = [
-      `${job.pageCount} pg`,
+    const isActing = _actionInProgress === job.id;
+
+    const specs = [
+      job.pageCount ? `${job.pageCount} pg` : null,
       job.copies > 1 ? `${job.copies}×` : null,
       job.color ? 'Color' : 'B&W',
+      job.doubleSided ? '2-sided' : null,
+      job.paperSize && job.paperSize !== 'A4' ? job.paperSize : null,
       job.printerName || null,
     ].filter(Boolean);
 
-    const meta = metaParts.map((p, i) => i === 0
+    const meta = specs.map((p, i) => i === 0
       ? `<span>${escHtml(p)}</span>`
       : `<span class="sep">·</span><span>${escHtml(p)}</span>`
     ).join('');
 
+    const actions = buildActionButtons(job, autoPrint, isActing);
+
     return `
-      <div class="job-row">
+      <div class="job-row ${isActing ? 'job-acting' : ''}" data-id="${escHtml(job.id)}">
         <div class="job-token">#${escHtml(token)}</div>
         <div class="job-body">
-          <div class="job-name">${escHtml(job.fileName)}</div>
+          <div class="job-name">${escHtml(job.fileName || '')}</div>
           <div class="job-meta">${meta}</div>
+          ${actions}
         </div>
         <div class="job-badge ${escHtml(job.status)}">${statusLabel(job.status)}</div>
       </div>
     `;
   }).join('');
+
+  // Wire up action button clicks
+  jobList.querySelectorAll('[data-action]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const jobId = btn.closest('[data-id]')?.dataset.id;
+      if (jobId) handleJobAction(action, jobId);
+    });
+  });
+}
+
+function buildActionButtons(job, autoPrint, isActing) {
+  if (isActing) {
+    return `<div class="job-actions"><span class="job-acting-label">Processing…</span></div>`;
+  }
+
+  const btns = [];
+
+  if (job.status === 'queued') {
+    if (!autoPrint) {
+      btns.push(`<button class="job-btn job-btn-print" data-action="print" title="Print this job">Print</button>`);
+    } else {
+      btns.push(`<span class="job-auto-label">Auto-printing…</span>`);
+    }
+    btns.push(`<button class="job-btn job-btn-cancel" data-action="cancel" title="Cancel">✕</button>`);
+  }
+
+  if (job.status === 'printing') {
+    btns.push(`<span class="job-auto-label">Printing…</span>`);
+    btns.push(`<button class="job-btn job-btn-cancel" data-action="cancel" title="Cancel">✕</button>`);
+  }
+
+  if (job.status === 'ready') {
+    btns.push(`<button class="job-btn job-btn-pickup" data-action="pickup" title="Mark as picked up">Picked Up</button>`);
+  }
+
+  if (job.status === 'cancelled') {
+    return '';
+  }
+
+  if (btns.length === 0) return '';
+  return `<div class="job-actions">${btns.join('')}</div>`;
+}
+
+async function handleJobAction(action, jobId) {
+  if (_actionInProgress) return;
+  _actionInProgress = jobId;
+  renderJobList();
+
+  let result;
+  try {
+    if (action === 'print') {
+      result = await window.printdrop.printJob(jobId);
+    } else if (action === 'pickup') {
+      result = await window.printdrop.pickupJob(jobId);
+    } else if (action === 'cancel') {
+      result = await window.printdrop.cancelJob(jobId);
+    }
+  } catch (err) {
+    console.error('Action error:', err);
+  } finally {
+    _actionInProgress = null;
+    renderJobList();
+  }
+
+  if (result && !result.ok) {
+    console.error(`Action '${action}' failed: ${result.error}`);
+  }
 }
 
 function renderPrinters() {
@@ -157,18 +271,9 @@ function renderPrinters() {
 }
 
 function passesFilter(job) {
-  if (_filter === 'all') {
-    // search still applies
-  } else if (_filter === 'printing') {
-    if (job.status !== 'printing' && job.status !== 'queued') return false;
-  } else if (_filter === 'ready') {
-    if (job.status !== 'ready') return false;
-  } else if (_filter === 'cancelled') {
-    if (job.status !== 'cancelled') return false;
-  }
-
+  if (_filter !== 'all' && job.status !== _filter) return false;
   if (!_search) return true;
-  const haystack = `${job.token} ${job.fileName} ${job.printerName || ''}`.toLowerCase();
+  const haystack = `${job.token} ${job.fileName || ''} ${job.printerName || ''}`.toLowerCase();
   return haystack.includes(_search);
 }
 
@@ -179,6 +284,7 @@ function statusLabel(status) {
     queued: 'QUEUED',
     printing: 'PRINTING',
     ready: 'READY',
+    picked_up: 'PICKED UP',
     cancelled: 'FAILED',
   };
   return map[status] || String(status).toUpperCase();
@@ -199,7 +305,6 @@ function escHtml(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Refresh the "last poll" time display every 5 seconds
 setInterval(() => {
   if (_state?.lastPollAt) {
     document.getElementById('lastPoll').textContent = `Last check ${timeSince(_state.lastPollAt)} ago`;

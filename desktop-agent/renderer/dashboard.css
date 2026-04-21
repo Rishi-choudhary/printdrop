@@ -383,3 +383,80 @@ body {
 }
 .foot-btn:hover { color: var(--text); background: var(--surface-2); }
 .foot-btn.danger:hover { color: var(--danger); background: var(--danger-50); }
+
+/* ── Mode button ─────────────────────────────────────────────────────────── */
+
+.mode-btn {
+  -webkit-app-region: no-drag;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-soft);
+  transition: all var(--t-fast);
+  white-space: nowrap;
+}
+.mode-btn:hover { border-color: var(--brand-500); color: var(--brand-500); }
+.mode-btn.mode-auto {
+  background: var(--warning-50);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* ── Job action buttons ─────────────────────────────────────────────────── */
+
+.job-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.job-btn {
+  padding: 3px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: var(--r-sm);
+  transition: all var(--t-fast);
+}
+.job-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+.job-btn-print {
+  background: #f97316;
+  color: #fff;
+}
+.job-btn-print:hover { background: #ea6c0a; }
+
+.job-btn-pickup {
+  background: var(--success);
+  color: #fff;
+}
+.job-btn-pickup:hover { filter: brightness(0.9); }
+
+.job-btn-cancel {
+  background: var(--danger-50);
+  color: var(--danger);
+  border: 1px solid transparent;
+}
+.job-btn-cancel:hover { background: var(--danger); color: #fff; }
+
+.job-auto-label {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.job-acting { opacity: 0.75; pointer-events: none; }
+.job-acting-label {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.job-badge.picked_up {
+  background: var(--surface-2);
+  color: var(--text-faint);
+}

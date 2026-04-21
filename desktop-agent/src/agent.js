@@ -3,9 +3,12 @@
  *
  * Responsibilities:
  *   - Heartbeat every 30s (reports live printers to backend)
- *   - Poll for queued jobs every pollIntervalMs (default 4s)
- *   - Download, prepare, and print each job
- *   - Update job status: queued → printing → ready | cancelled
+ *   - On startup: fetch shop info (autoPrint, shopName) from /api/agent/me
+ *   - Poll for jobs every pollIntervalMs using /api/agent/jobs
+ *   - Auto mode:   automatically claim + print queued jobs
+ *   - Manual mode: surface queued jobs to UI; print only when shopkeeper clicks
+ *   - Pickup mode: mark ready jobs as picked_up via UI
+ *   - Update job status: queued → printing → ready | cancelled → picked_up
  *   - Idempotency via processedJobs (persisted across restarts)
  *   - Startup recovery: re-queue any jobs stuck in 'printing'
  */
@@ -23,6 +26,7 @@ const { wrapImageAsPdf } = require('./image-to-pdf');
 const processedJobs = require('./processed-jobs');
 const { ensureSumatra } = require('./sumatra');
 const logger = require('./logger');
+const configStore = require('./config');
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']);
 const MAX_RETRIES = 3;
@@ -37,11 +41,17 @@ let _heartbeatTimer = null;
 let _isPolling = false;
 const _inFlight = new Set(); // job IDs currently being processed
 
+// Full server queue (queued + printing + ready + today's done)
+let _serverQueue = [];
+
+// Whether auto-print mode is active (sourced from backend shop.autoPrint)
+let _autoPrint = false;
+
 // In-memory job list for the dashboard (newest first, capped at 50)
 const _recentJobs = [];
 let _printedToday = 0;
 let _failedToday = 0;
-let _statsDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD for daily reset
+let _statsDate = new Date().toISOString().slice(0, 10);
 let _connected = false;
 let _lastPollAt = null;
 let _lastHeartbeatAt = null;
@@ -51,16 +61,19 @@ let _lastHeartbeatAt = null;
 async function start(config, callbacks) {
   _config = config;
   _callbacks = callbacks;
+  _autoPrint = config.autoPrint || false;
 
   logger.info(`Agent starting — shop: ${config.shopName || config.shopId}`);
   logger.info(`B&W printer: ${config.bwPrinterSystemName || 'none'}`);
   logger.info(`Color printer: ${config.colorPrinterSystemName || 'none (fallback to B&W)'}`);
+  logger.info(`Mode: ${_autoPrint ? 'Auto-Print' : 'Manual'}`);
 
-  // Pre-warm SumatraPDF on Windows so the first print has zero download wait.
-  // Non-blocking: if download fails, the print path falls back to Chromium.
   if (os.platform() === 'win32') {
     ensureSumatra().catch((err) => logger.warn(`SumatraPDF prewarm failed: ${err.message}`));
   }
+
+  // Fetch shop identity + settings from server, persist shopId/shopName/autoPrint
+  await fetchShopInfo();
 
   // Recover any jobs stuck in 'printing' from a previous run
   await recoverStuckJobs();
@@ -90,6 +103,7 @@ function getState() {
   return {
     connected: _connected,
     shopName: _config?.shopName || '',
+    autoPrint: _autoPrint,
     lastPollAt: _lastPollAt,
     lastHeartbeatAt: _lastHeartbeatAt,
     printers: [
@@ -100,13 +114,36 @@ function getState() {
         ? { systemName: _config.colorPrinterSystemName, displayName: _config.colorPrinterDisplayName || _config.colorPrinterSystemName, isOnline: true, role: 'color' }
         : null,
     ].filter(Boolean),
+    serverQueue: _serverQueue,
     recentJobs: _recentJobs.slice(0, 20),
     stats: {
       printedToday: _printedToday,
       inQueue: _inFlight.size,
       failedToday: _failedToday,
+      queued: _serverQueue.filter((j) => j.status === 'queued').length,
+      printing: _serverQueue.filter((j) => j.status === 'printing').length,
+      ready: _serverQueue.filter((j) => j.status === 'ready').length,
     },
   };
+}
+
+// ── Shop info fetch ───────────────────────────────────────────────────────────
+
+async function fetchShopInfo() {
+  try {
+    const data = await apiFetch('/api/agent/me');
+    if (data.shopId) {
+      _config.shopId = data.shopId;
+      _config.shopName = data.shopName;
+      _autoPrint = data.autoPrint || false;
+      _config.autoPrint = _autoPrint;
+      // Persist to disk so restarts remember shopId, shopName, and mode
+      configStore.save({ shopId: data.shopId, shopName: data.shopName, autoPrint: _autoPrint });
+      logger.info(`Shop: ${data.shopName} (${data.shopId}) — autoPrint: ${_autoPrint}`);
+    }
+  } catch (err) {
+    logger.warn(`Could not fetch shop info: ${err.message}`);
+  }
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
@@ -124,9 +161,9 @@ async function sendHeartbeat() {
     });
     _connected = true;
     _lastHeartbeatAt = new Date().toISOString();
-    // Refresh shopName from server in case it was renamed
     if (data?.shopName && data.shopName !== _config.shopName) {
       _config.shopName = data.shopName;
+      configStore.save({ shopName: data.shopName });
     }
     _callbacks.onHeartbeat?.();
     logger.debug('Heartbeat OK');
@@ -148,7 +185,6 @@ async function pollQueue() {
   if (_isPolling) return;
   _isPolling = true;
 
-  // Reset daily counters at midnight
   const today = new Date().toISOString().slice(0, 10);
   if (_statsDate !== today) {
     _statsDate = today;
@@ -158,27 +194,37 @@ async function pollQueue() {
   }
 
   try {
-    const data = await apiFetch('/api/jobs?status=queued');
+    const data = await apiFetch('/api/agent/jobs');
     const jobs = Array.isArray(data) ? data : (data.jobs || []);
     _connected = true;
     _lastPollAt = new Date().toISOString();
 
-    const newJobs = jobs.filter((j) => !_inFlight.has(j.id) && !processedJobs.has(j.id));
+    // Update the full server queue for dashboard display
+    _serverQueue = jobs;
 
-    if (newJobs.length > 0) {
-      logger.info(`${newJobs.length} new job(s) found`);
+    const queuedJobs = jobs.filter((j) => j.status === 'queued');
+    const newJobs = queuedJobs.filter((j) => !_inFlight.has(j.id) && !processedJobs.has(j.id));
+
+    if (newJobs.length > 0 && _autoPrint) {
+      logger.info(`${newJobs.length} new queued job(s) — auto-print mode`);
+      _callbacks.onJobNew?.(newJobs[0]);
+    } else if (newJobs.length > 0) {
+      logger.info(`${newJobs.length} new queued job(s) — manual mode, waiting for shopkeeper`);
       _callbacks.onJobNew?.(newJobs[0]);
     }
 
-    for (const job of newJobs) {
-      _inFlight.add(job.id);
-      // Fire-and-forget: two printers can print in parallel
-      processJob(job).catch((err) => {
-        logger.error(`Unexpected error on job ${job.id}: ${err.message}`);
-        _inFlight.delete(job.id);
-        _callbacks.onJobError?.(job);
-      });
+    if (_autoPrint) {
+      for (const job of newJobs) {
+        _inFlight.add(job.id);
+        processJob(job).catch((err) => {
+          logger.error(`Unexpected error on job ${job.id}: ${err.message}`);
+          _inFlight.delete(job.id);
+          _callbacks.onJobError?.(job);
+        });
+      }
     }
+    // In manual mode: new jobs are surfaced in _serverQueue for dashboard display.
+    // The shopkeeper must click Print in the dashboard to trigger manualPrint().
   } catch (err) {
     if (isAuthError(err)) {
       logger.error('Poll: authentication failed — stopping agent');
@@ -190,8 +236,93 @@ async function pollQueue() {
     }
   } finally {
     _isPolling = false;
-    _callbacks.onHeartbeat?.(); // reuse to refresh dashboard timestamp
+    _callbacks.onHeartbeat?.();
   }
+}
+
+// ── Manual print (shopkeeper clicks Print in dashboard) ───────────────────────
+
+async function manualPrint(jobId) {
+  const job = _serverQueue.find((j) => j.id === jobId);
+  if (!job) throw new Error('Job not found in queue');
+  if (job.status !== 'queued') throw new Error(`Job is ${job.status}, not queued`);
+  if (_inFlight.has(jobId)) throw new Error('Job is already being processed');
+
+  _inFlight.add(jobId);
+  try {
+    await processJob(job);
+  } catch (err) {
+    _inFlight.delete(jobId);
+    throw err;
+  }
+}
+
+// ── Pickup (shopkeeper clicks Picked Up in dashboard) ────────────────────────
+
+async function markPickedUp(jobId) {
+  const job = _serverQueue.find((j) => j.id === jobId);
+  if (!job) throw new Error('Job not found in queue');
+  if (job.status !== 'ready') throw new Error(`Job is ${job.status}, not ready`);
+
+  await apiFetch(`/api/agent/jobs/${jobId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'picked_up' }),
+  });
+
+  // Update local queue optimistically
+  const idx = _serverQueue.findIndex((j) => j.id === jobId);
+  if (idx !== -1) _serverQueue[idx] = { ..._serverQueue[idx], status: 'picked_up' };
+  _pushRecentJob(job, 'picked_up', job.printerName);
+  _callbacks.onHeartbeat?.();
+  logger.info(`[#${String(job.token).padStart(3, '0')}] Marked as picked up`);
+}
+
+// ── Cancel (shopkeeper clicks Cancel in dashboard) ───────────────────────────
+
+async function cancelJob(jobId) {
+  const job = _serverQueue.find((j) => j.id === jobId);
+  if (!job) throw new Error('Job not found in queue');
+  if (!['queued', 'printing'].includes(job.status)) throw new Error(`Cannot cancel job in ${job.status} status`);
+
+  await apiFetch(`/api/agent/jobs/${jobId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'cancelled' }),
+  });
+
+  _inFlight.delete(jobId);
+  const idx = _serverQueue.findIndex((j) => j.id === jobId);
+  if (idx !== -1) _serverQueue[idx] = { ..._serverQueue[idx], status: 'cancelled' };
+  _pushRecentJob(job, 'cancelled', job.printerName);
+  _callbacks.onHeartbeat?.();
+  logger.info(`[#${String(job.token).padStart(3, '0')}] Cancelled by shopkeeper`);
+}
+
+// ── Set mode (shopkeeper toggles Auto/Manual in dashboard) ───────────────────
+
+async function setMode(autoPrint) {
+  _autoPrint = autoPrint;
+  _config.autoPrint = autoPrint;
+  configStore.save({ autoPrint });
+
+  // Sync to backend so other devices see the change
+  try {
+    if (_config.shopId) {
+      const apiUrl = `${_config.apiUrl}/api/shops/${_config.shopId}`;
+      await fetch(apiUrl, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${_config.agentKey}`,
+        },
+        body: JSON.stringify({ autoPrint }),
+      });
+    }
+  } catch (err) {
+    logger.warn(`Could not sync autoPrint to server: ${err.message}`);
+  }
+
+  logger.info(`Mode changed to: ${autoPrint ? 'Auto-Print' : 'Manual'}`);
+  _callbacks.onHeartbeat?.();
 }
 
 // ── Job processing ────────────────────────────────────────────────────────────
@@ -215,14 +346,14 @@ async function processJob(job) {
       logger.warn(`[${token}] Download attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`);
       if (attempt === MAX_RETRIES) {
         logger.error(`[${token}] Download failed after ${MAX_RETRIES} attempts — skipping`);
-        processedJobs.add(job.id); // don't retry this session
+        processedJobs.add(job.id);
         _inFlight.delete(job.id);
         _failedToday++;
         _pushRecentJob(job, 'cancelled', printerName);
         _callbacks.onJobError?.(job);
         return;
       }
-      await sleep(2 ** attempt * 1000); // 2s, 4s, 8s
+      await sleep(2 ** attempt * 1000);
     }
   }
 
@@ -239,14 +370,12 @@ async function processJob(job) {
   }
 
   // ── Step 3: Claim job atomically (prevents duplicate prints) ──────────────
-  // Recovery case: if the job is already in 'printing' status (it was claimed
-  // before the agent crashed/restarted), skip the claim — we're resuming it.
   if (job.status === 'printing') {
     logger.info(`[${token}] Resuming previously claimed job`);
     _pushRecentJob(job, 'printing', printerName);
   } else {
     try {
-      const claimResult = await apiFetch(`/api/jobs/${job.id}/claim`, {
+      const claimResult = await apiFetch(`/api/agent/jobs/${job.id}/claim`, {
         method: 'POST',
         body: JSON.stringify({ printerName }),
       });
@@ -256,7 +385,11 @@ async function processJob(job) {
         _inFlight.delete(job.id);
         return;
       }
+      // Update local queue
+      const idx = _serverQueue.findIndex((j) => j.id === job.id);
+      if (idx !== -1) _serverQueue[idx] = { ..._serverQueue[idx], status: 'printing' };
       _pushRecentJob(job, 'printing', printerName);
+      _callbacks.onHeartbeat?.();
     } catch (err) {
       if (err.message?.includes('409')) {
         logger.info(`[${token}] Job already claimed by another agent — skipping`);
@@ -332,12 +465,14 @@ async function processJob(job) {
   // ── Step 8: Update final status ───────────────────────────────────────────
   if (printSuccess) {
     try {
-      await apiFetch(`/api/jobs/${job.id}/status`, {
+      await apiFetch(`/api/agent/jobs/${job.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'ready', printerName }),
       });
       logger.info(`[${token}] Done — ready for pickup`);
       _printedToday++;
+      const idx = _serverQueue.findIndex((j) => j.id === job.id);
+      if (idx !== -1) _serverQueue[idx] = { ..._serverQueue[idx], status: 'ready' };
       _pushRecentJob(job, 'ready', printerName);
       _callbacks.onJobDone?.(job);
     } catch (err) {
@@ -345,12 +480,14 @@ async function processJob(job) {
     }
   } else {
     try {
-      await apiFetch(`/api/jobs/${job.id}/status`, {
+      await apiFetch(`/api/agent/jobs/${job.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'cancelled' }),
       });
       logger.error(`[${token}] All print attempts failed — cancelled`);
       _failedToday++;
+      const idx = _serverQueue.findIndex((j) => j.id === job.id);
+      if (idx !== -1) _serverQueue[idx] = { ..._serverQueue[idx], status: 'cancelled' };
       _pushRecentJob(job, 'cancelled', printerName);
       _callbacks.onJobError?.(job);
     } catch (err) {
@@ -366,13 +503,14 @@ async function processJob(job) {
 
 async function recoverStuckJobs() {
   try {
-    const data = await apiFetch('/api/jobs?status=printing');
+    const data = await apiFetch('/api/agent/jobs');
     const jobs = Array.isArray(data) ? data : (data.jobs || []);
+    const stuck = jobs.filter((j) => j.status === 'printing');
 
-    if (jobs.length === 0) return;
-    logger.info(`Recovering ${jobs.length} job(s) stuck in 'printing'...`);
+    if (stuck.length === 0) return;
+    logger.info(`Recovering ${stuck.length} job(s) stuck in 'printing'...`);
 
-    for (const job of jobs) {
+    for (const job of stuck) {
       if (!_inFlight.has(job.id) && !processedJobs.has(job.id)) {
         _inFlight.add(job.id);
         processJob(job).catch((err) => {
@@ -392,7 +530,6 @@ function selectPrinter(job) {
   if (job.color && _config.colorPrinterSystemName) {
     return _config.colorPrinterSystemName;
   }
-  // Fallback: always use bw printer (even for color jobs if no color printer set)
   return _config.bwPrinterSystemName || _config.colorPrinterSystemName || '';
 }
 
@@ -409,7 +546,6 @@ function _unlink(filePath) {
 }
 
 function _pushRecentJob(job, status, printerName) {
-  // Remove existing entry for same job (status update)
   const idx = _recentJobs.findIndex((j) => j.id === job.id);
   if (idx !== -1) _recentJobs.splice(idx, 1);
 
@@ -422,10 +558,11 @@ function _pushRecentJob(job, status, printerName) {
     color: job.color,
     copies: job.copies,
     pageCount: job.pageCount,
+    doubleSided: job.doubleSided,
+    paperSize: job.paperSize,
     processedAt: new Date().toISOString(),
   });
 
-  // Cap at 50 entries
   if (_recentJobs.length > 50) _recentJobs.length = 50;
 }
 
@@ -446,4 +583,4 @@ async function apiFetch(urlPath, options = {}) {
   return res.json();
 }
 
-module.exports = { start, stop, hasInFlight, getState };
+module.exports = { start, stop, hasInFlight, getState, manualPrint, markPickedUp, cancelJob, setMode };

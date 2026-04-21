@@ -5,7 +5,7 @@ const { app } = require('electron');
 const DEFAULTS = {
   version: 1,
   agentKey: '',
-  apiUrl: 'https://printdrop.app',
+  apiUrl: 'https://api.printdrop.app',
   shopId: null,
   shopName: null,
   bwPrinterSystemName: null,
@@ -19,6 +19,7 @@ const DEFAULTS = {
   coverPage: true,
   // tokenStampPosition: 'none' | 'front-top-right' | 'back-first-right' | 'back-first-left' | 'back-last-right' | 'back-last-left'
   tokenStampPosition: 'front-top-right',
+  autoPrint: false,
   soundEnabled: true,
   notificationsEnabled: true,
   autoStart: true,

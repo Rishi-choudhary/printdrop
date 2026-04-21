@@ -77,6 +77,7 @@ async function buildServer() {
     api.register(require('./routes/admin'),    { prefix: '/admin' });
     api.register(require('./routes/webhooks'), { prefix: '/webhooks' });
     api.register(require('./routes/printers'), { prefix: '/printers' });
+    api.register(require('./routes/agent'),    { prefix: '/agent' });
   }, { prefix: '/api' });
 
   // Health check

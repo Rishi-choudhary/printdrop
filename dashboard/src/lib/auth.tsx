@@ -10,7 +10,7 @@ interface User {
   name: string | null;
   email: string | null;
   role: string;
-  shop?: { id: string; name: string } | null;
+  shop?: { id: string; name: string; autoPrint?: boolean; agentLastSeen?: string | null } | null;
 }
 
 interface AuthContextType {

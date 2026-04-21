@@ -40,6 +40,18 @@ contextBridge.exposeInMainWorld('printdrop', {
   getHistory: () =>
     ipcRenderer.invoke('dashboard:get-history'),
 
+  printJob: (jobId) =>
+    ipcRenderer.invoke('dashboard:print-job', { jobId }),
+
+  pickupJob: (jobId) =>
+    ipcRenderer.invoke('dashboard:pickup-job', { jobId }),
+
+  cancelJob: (jobId) =>
+    ipcRenderer.invoke('dashboard:cancel-job', { jobId }),
+
+  setMode: (autoPrint) =>
+    ipcRenderer.invoke('dashboard:set-mode', { autoPrint }),
+
   // ── Settings ──────────────────────────────────────────────────────────────
 
   getConfig: () =>

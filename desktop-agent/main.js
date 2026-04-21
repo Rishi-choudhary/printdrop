@@ -533,7 +533,6 @@ function registerIpcHandlers() {
 
   ipcMain.handle('dashboard:get-history', () => {
     const state = agent.getState();
-    // Return all 50 recent jobs (not just the 20 sent to the live dashboard)
     return { jobs: state.recentJobs || [] };
   });
 
@@ -543,6 +542,45 @@ function registerIpcHandlers() {
       dashboardWin.setAlwaysOnTop(dashboardPinned);
     }
     return { pinned: dashboardPinned };
+  });
+
+  ipcMain.handle('dashboard:print-job', async (_e, { jobId }) => {
+    try {
+      await agent.manualPrint(jobId);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('dashboard:pickup-job', async (_e, { jobId }) => {
+    try {
+      await agent.markPickedUp(jobId);
+      broadcastDashboard();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('dashboard:cancel-job', async (_e, { jobId }) => {
+    try {
+      await agent.cancelJob(jobId);
+      broadcastDashboard();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('dashboard:set-mode', async (_e, { autoPrint }) => {
+    try {
+      await agent.setMode(autoPrint);
+      broadcastDashboard();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   // ── Settings ───────────────────────────────────────────────────────────
