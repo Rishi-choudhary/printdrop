@@ -51,8 +51,7 @@ PAYMENT_PENDING → QUEUED → PRINTING → READY → PICKED_UP
 ```
 
 ## API Routes
-- `POST /api/auth/send-otp` — Send OTP to phone
-- `POST /api/auth/verify-otp` — Verify OTP, get JWT
+- `POST /api/auth/shopkeeper-login` — Shopkeeper/admin login with phone + 6-digit PIN
 - `GET/POST /api/shops` — Shop CRUD
 - `GET/POST/PATCH /api/jobs` — Job management
 - `GET /api/admin/*` — Admin endpoints
@@ -62,7 +61,7 @@ PAYMENT_PENDING → QUEUED → PRINTING → READY → PICKED_UP
 
 ## Dashboard Pages
 - `/` — Landing page
-- `/login` — Phone OTP login
+- `/login` — Shopkeeper/admin phone + PIN login
 - `/dashboard` — Shopkeeper job queue
 - `/dashboard/settings` — Shop rates & config
 - `/dashboard/analytics` — Revenue & order stats

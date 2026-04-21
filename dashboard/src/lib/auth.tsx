@@ -17,7 +17,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (phone: string, otp: string) => Promise<void>;
+  login: (phone: string, pin: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -52,10 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = async (phone: string, otp: string) => {
-    const data = await apiFetch<{ token: string; user: User }>('/auth/verify-otp', {
+  const login = async (phone: string, pin: string) => {
+    const data = await apiFetch<{ token: string; user: User }>('/auth/shopkeeper-login', {
       method: 'POST',
-      body: JSON.stringify({ phone, code: otp }),
+      body: JSON.stringify({ phone, pin }),
     });
     Cookies.set('token', data.token, { expires: 30 });
     setToken(data.token);

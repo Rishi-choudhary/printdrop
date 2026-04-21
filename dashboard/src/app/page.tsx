@@ -9,6 +9,27 @@ import {
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 
+/* ─── WhatsApp order CTA ────────────────────────────────────────────────── */
+function WhatsAppOrderButton() {
+  const url = process.env.NEXT_PUBLIC_WHATSAPP_ORDER_URL;
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        <Button size="xl" className="rounded-full">
+          <Upload className="w-4 h-4" />
+          Print on WhatsApp
+        </Button>
+      </a>
+    );
+  }
+  return (
+    <Button size="xl" className="rounded-full" disabled title="WhatsApp ordering link coming soon">
+      <Upload className="w-4 h-4" />
+      Print on WhatsApp
+    </Button>
+  );
+}
+
 /* ─── Marketing Navbar ──────────────────────────────────────────────────── */
 function MarketingNav() {
   const [scrolled, setScrolled] = useState(false);
@@ -63,13 +84,7 @@ function MarketingNav() {
               scrolled ? 'text-muted-foreground hover:text-foreground' : 'text-white/80 hover:text-white',
             ].join(' ')}
           >
-            Sign in
-          </Link>
-          <Link href="/login">
-            <Button size="sm" className="rounded-full px-4">
-              Register your shop
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
+            Shopkeeper Login
           </Link>
         </div>
 
@@ -98,10 +113,7 @@ function MarketingNav() {
             ))}
             <div className="flex flex-col gap-2 pt-2 border-t border-border">
               <Link href="/login" onClick={() => setOpen(false)}>
-                <Button variant="outline" size="sm" className="w-full">Sign in</Button>
-              </Link>
-              <Link href="/login" onClick={() => setOpen(false)}>
-                <Button size="sm" className="w-full">Register your shop</Button>
+                <Button variant="outline" size="sm" className="w-full">Shopkeeper Login</Button>
               </Link>
             </div>
           </div>
@@ -150,16 +162,11 @@ function Hero() {
             </p>
 
             <div className="flex flex-wrap gap-3">
-              <Link href="/print">
-                <Button size="xl" className="rounded-full">
-                  <Upload className="w-4 h-4" />
-                  Print a file now
-                </Button>
-              </Link>
+              <WhatsAppOrderButton />
               <Link href="/login">
                 <Button size="xl" variant="ghost-white" className="rounded-full border border-white/20">
                   <Store className="w-4 h-4" />
-                  I run a shop
+                  Shopkeeper Login
                 </Button>
               </Link>
             </div>
@@ -400,12 +407,15 @@ function ForShops() {
               </li>
             ))}
           </ul>
-          <Link href="/register-shop">
+          <Link href="/login">
             <Button size="lg" className="rounded-full">
-              Register your shop — it&apos;s free
+              Already a partner? Sign in
               <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
+          <p className="text-sm text-muted-foreground mt-3">
+            Want to join? Contact us to onboard your shop.
+          </p>
         </div>
 
         {/* Dashboard preview */}

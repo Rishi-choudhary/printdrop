@@ -43,14 +43,10 @@ services:
       - key: FRONTEND_URL
         value: https://printdrop-dashboard.onrender.com
       - key: API_URL
-        value: https://printdrop-api.onrender.com
+        value: https://api.printdrop.app
       - key: LIBREOFFICE_URL
         value: http://printdrop-libreoffice:3002
       - key: TELEGRAM_BOT_USERNAME
-        fromGroup: printdrop-secrets
-      - key: MSG91_AUTH_KEY
-        fromGroup: printdrop-secrets
-      - key: MSG91_TEMPLATE_ID
         fromGroup: printdrop-secrets
       - key: ADMIN_PHONE
         fromGroup: printdrop-secrets
