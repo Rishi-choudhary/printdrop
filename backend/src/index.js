@@ -124,7 +124,7 @@ function validateConfig() {
   if (WEAK_SECRETS.includes(config.jwtSecret)) warnings.push('JWT_SECRET is using a known insecure value — generate a strong one with: openssl rand -base64 48');
   if (!config.razorpay.keyId) warnings.push('RAZORPAY_KEY_ID not set — payment links will use mock mode');
   if (!config.razorpay.webhookSecret) warnings.push('RAZORPAY_WEBHOOK_SECRET not set — webhook signature verification disabled');
-  if (!config.telegram.botToken) warnings.push('TELEGRAM_BOT_TOKEN not set — Telegram bot will not start');
+  if (!config.telegram.disabled && !config.telegram.botToken) warnings.push('TELEGRAM_BOT_TOKEN not set — Telegram bot will not start');
   if (!config.whatsapp.apiKey) warnings.push('WHATSAPP_API_KEY not set — WhatsApp (Gupshup) cannot send messages');
   if (!config.whatsapp.sourceNumber) warnings.push('GUPSHUP_SOURCE_NUMBER not set — WhatsApp messages will not be sent');
 
@@ -167,7 +167,9 @@ async function start() {
   try {
     // Register Telegram webhook route before listen(); Fastify does not allow
     // new routes after the server has started.
-    if (config.telegram.botToken) {
+    if (config.telegram.disabled) {
+      fastify.log.warn('Telegram bot disabled by DISABLE_TELEGRAM_BOT');
+    } else if (config.telegram.botToken) {
       try {
         const { startTelegramBot } = require('./bot/telegram');
         await startTelegramBot(fastify);
