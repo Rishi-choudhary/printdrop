@@ -9,21 +9,22 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  phone         String    @unique
-  name          String?
-  email         String?
-  role          String    @default("customer") // customer | shopkeeper | admin
-  credits       Float     @default(0)
-  referralCode  String?   @unique
-  referredBy    String?
+  id             String   @id @default(cuid())
+  phone          String   @unique
+  name           String?
+  email          String?
+  role           String   @default("customer") // customer | shopkeeper | admin
+  credits        Float    @default(0)
+  referralCode   String?  @unique
+  referredBy     String?
   telegramChatId String?  @unique
-  pinHash       String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  pinHash        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   shop          Shop?
   jobs          Job[]
+  orders        Order[]
   payments      Payment[]
   conversations Conversation[]
   referrals     Referral[]     @relation("referrer")
@@ -34,15 +35,18 @@ model User {
 }
 
 model Shop {
-  id            String   @id @default(cuid())
-  name          String
-  address       String?
-  phone         String   @unique
-  latitude      Float?
-  longitude     Float?
-  ownerId       String   @unique
-  isActive      Boolean  @default(true)
-  agentKey      String?  @unique
+  id        String  @id @default(cuid())
+  name      String
+  address   String?
+  phone     String  @unique
+  latitude  Float?
+  longitude Float?
+  ownerId   String  @unique
+  isActive  Boolean @default(true)
+  // Deprecated plaintext field kept only to allow one-time migration of older agents.
+  // New keys are stored in agentKeyHash.
+  agentKey     String? @unique
+  agentKeyHash String? @unique
 
   // Rates per page
   ratesBwSingle    Float @default(2)
@@ -53,80 +57,85 @@ model Shop {
   spiralCharge     Float @default(30)
 
   // Auto-print mode
-  autoPrint     Boolean @default(false)
+  autoPrint Boolean @default(false)
 
   // Desktop agent connection tracking
   agentLastSeen DateTime?
   agentVersion  String?
 
   // Operating hours
-  opensAt       String  @default("09:00")
-  closesAt      String  @default("21:00")
-  closedDays    String  @default("[]")
+  opensAt    String @default("09:00")
+  closesAt   String @default("21:00")
+  closedDays String @default("[]")
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  owner         User     @relation(fields: [ownerId], references: [id])
-  jobs          Job[]
-  printers      ShopPrinter[]
+  owner    User          @relation(fields: [ownerId], references: [id])
+  jobs     Job[]
+  orders   Order[]
+  printers ShopPrinter[]
 
   @@index([isActive])
   @@index([agentKey])
+  @@index([agentKeyHash])
 }
 
 model Job {
-  id            String   @id @default(cuid())
-  token         Int
-  userId        String
-  shopId        String
-  fileUrl       String
-  fileKey       String?  // Storage key (R2 object key) for URL refresh
-  fileName      String
-  fileSize      Int
-  fileType      String
-  pageCount     Int      @default(1)
+  id        String  @id @default(cuid())
+  token     Int
+  userId    String
+  shopId    String
+  orderId   String?
+  fileUrl   String
+  fileKey   String? // Storage key (R2 object key) for URL refresh
+  fileName  String
+  fileSize  Int
+  fileType  String
+  pageCount Int     @default(1)
 
   // Print preferences
-  color         Boolean  @default(false)
-  copies        Int      @default(1)
-  doubleSided   Boolean  @default(false)
-  paperSize     String   @default("A4")
-  pageRange     String?
-  binding       String?
+  color       Boolean @default(false)
+  copies      Int     @default(1)
+  doubleSided Boolean @default(false)
+  paperSize   String  @default("A4")
+  pageRange   String?
+  binding     String?
 
   // Printer assignment
-  printerId     String?
-  printerName   String?
+  printerId   String?
+  printerName String?
 
   // Pricing
-  pricePerPage  Float
-  totalPrice    Float
-  platformFee   Float
-  shopEarning   Float
+  pricePerPage Float
+  totalPrice   Float
+  platformFee  Float
+  shopEarning  Float
 
   // Status workflow: pending → payment_pending → queued → printing → ready → picked_up | cancelled
-  status        String   @default("pending")
+  status String @default("pending")
 
   // Timestamps
-  paidAt        DateTime?
-  printedAt     DateTime?
-  readyAt       DateTime?
-  pickedUpAt    DateTime?
-  cancelledAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  paidAt      DateTime?
+  printedAt   DateTime?
+  readyAt     DateTime?
+  pickedUpAt  DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Source
-  source        String   @default("whatsapp")
+  source String @default("whatsapp")
 
-  user          User        @relation(fields: [userId], references: [id])
-  shop          Shop        @relation(fields: [shopId], references: [id])
-  printer       ShopPrinter? @relation(fields: [printerId], references: [id])
-  payment       Payment?
+  user    User         @relation(fields: [userId], references: [id])
+  shop    Shop         @relation(fields: [shopId], references: [id])
+  order   Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  printer ShopPrinter? @relation(fields: [printerId], references: [id], onDelete: SetNull)
+  payment Payment?
 
   @@index([userId])
   @@index([shopId])
+  @@index([orderId])
   @@index([status])
   @@index([shopId, status])
   @@index([shopId, token])
@@ -134,41 +143,45 @@ model Job {
 }
 
 model Payment {
-  id                  String   @id @default(cuid())
-  jobId               String   @unique
+  id                  String    @id @default(cuid())
+  jobId               String?   @unique
+  orderId             String?   @unique
   amount              Float
-  currency            String   @default("INR")
-  razorpayPaymentId   String?  @unique
-  razorpayOrderId     String?  @unique
+  currency            String    @default("INR")
+  razorpayPaymentId   String?   @unique
+  razorpayOrderId     String?   @unique
   razorpayPaymentLink String?
-  status              String   @default("pending")
+  status              String    @default("pending")
   refundId            String?
   paidAt              DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  job                 Job      @relation(fields: [jobId], references: [id])
-  user                User?    @relation(fields: [userId], references: [id])
-  userId              String?
+  job    Job?    @relation(fields: [jobId], references: [id])
+  order  Order?  @relation(fields: [orderId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
 
   @@index([status])
   @@index([jobId])
+  @@index([orderId])
+  @@index([userId])
 }
 
 model Conversation {
-  id          String   @id @default(cuid())
-  userId      String
-  platform    String
-  chatId      String
-  state       String   @default("idle")
-  context     String   @default("{}")
-  fileUrl     String?
-  fileName    String?
-  pageCount   Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  platform  String
+  chatId    String
+  state     String   @default("idle")
+  context   String   @default("{}")
+  fileUrl   String?
+  fileName  String?
+  pageCount Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@unique([platform, chatId])
   @@index([userId])
@@ -182,11 +195,49 @@ model Referral {
   rewardGiven Boolean  @default(false)
   createdAt   DateTime @default(now())
 
-  referrer    User     @relation("referrer", fields: [referrerId], references: [id])
-  referee     User     @relation("referee", fields: [refereeId], references: [id])
+  referrer User @relation("referrer", fields: [referrerId], references: [id])
+  referee  User @relation("referee", fields: [refereeId], references: [id])
 
+  @@unique([referrerId, refereeId])
   @@index([referrerId])
   @@index([refereeId])
+}
+
+model Order {
+  id          String  @id @default(cuid())
+  token       Int
+  userId      String
+  shopId      String
+
+  // Aggregate status across child jobs:
+  // pending → payment_pending → queued → printing → ready → picked_up | cancelled
+  status      String  @default("pending")
+  source      String  @default("web")
+
+  fileCount   Int     @default(0)
+  totalPages  Int     @default(0)
+  totalPrice  Float   @default(0)
+  platformFee Float   @default(0)
+  shopEarning Float   @default(0)
+
+  specialInstructions String?
+
+  paidAt      DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id])
+  shop    Shop     @relation(fields: [shopId], references: [id])
+  jobs    Job[]
+  payment Payment?
+
+  @@index([userId])
+  @@index([shopId])
+  @@index([status])
+  @@index([shopId, status])
+  @@index([shopId, token])
+  @@index([createdAt])
 }
 
 model OTP {
@@ -215,8 +266,8 @@ model ShopPrinter {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  shop  Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  jobs  Job[]
+  shop Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  jobs Job[]
 
   @@index([shopId])
 }
