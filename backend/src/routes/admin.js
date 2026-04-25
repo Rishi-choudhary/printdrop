@@ -1,4 +1,15 @@
 const { authenticate, requireRole } = require('../middleware/auth');
+const { parseInteger, pickDefined } = require('../utils/request');
+const { redactAgentKeyFields, redactUserShop } = require('../services/agent-key');
+
+const USER_ROLES = new Set(['customer', 'shopkeeper', 'admin']);
+const JOB_STATUSES = new Set(['pending', 'payment_pending', 'queued', 'printing', 'ready', 'picked_up', 'cancelled']);
+const SHOP_UPDATE_FIELDS = [
+  'name', 'address', 'phone', 'latitude', 'longitude', 'isActive',
+  'autoPrint', 'opensAt', 'closesAt', 'closedDays',
+  'ratesBwSingle', 'ratesBwDouble', 'ratesColorSingle',
+  'ratesColorDouble', 'bindingCharge', 'spiralCharge',
+];
 
 async function adminRoutes(fastify) {
   // All admin routes require admin role
@@ -45,10 +56,12 @@ async function adminRoutes(fastify) {
 
   // GET /admin/users — paginated user list
   fastify.get('/users', async (request) => {
-    const { search, role, limit = 50, offset = 0 } = request.query;
+    const { search, role } = request.query;
+    const limit = parseInteger(request.query.limit, { defaultValue: 50, min: 1, max: 200 });
+    const offset = parseInteger(request.query.offset, { defaultValue: 0, min: 0, max: 100000 });
 
     const where = {};
-    if (role) where.role = role;
+    if (role && USER_ROLES.has(role)) where.role = role;
     if (search) {
       where.OR = [
         { phone: { contains: search } },
@@ -65,20 +78,23 @@ async function adminRoutes(fastify) {
           _count: { select: { jobs: true } },
         },
         orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset),
+        take: limit,
+        skip: offset,
       }),
       fastify.prisma.user.count({ where }),
     ]);
 
-    return { users, total };
+    return { users: users.map(redactUserShop), total };
   });
 
   // PATCH /admin/users/:id — change role
   fastify.patch('/users/:id', async (request, reply) => {
     const { role, name, email } = request.body;
     const updateData = {};
-    if (role) updateData.role = role;
+    if (role) {
+      if (!USER_ROLES.has(role)) return reply.code(400).send({ error: 'Invalid role' });
+      updateData.role = role;
+    }
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
 
@@ -88,7 +104,7 @@ async function adminRoutes(fastify) {
       include: { shop: true },
     });
 
-    return user;
+    return redactUserShop(user);
   });
 
   // GET /admin/shops — all shops
@@ -100,7 +116,7 @@ async function adminRoutes(fastify) {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return shops;
+    return shops.map(redactAgentKeyFields);
   });
 
   // PATCH /admin/shops/:id — update shop
@@ -110,23 +126,26 @@ async function adminRoutes(fastify) {
     });
     if (!shop) return reply.code(404).send({ error: 'Shop not found' });
 
+    const updateData = pickDefined(request.body || {}, SHOP_UPDATE_FIELDS);
     const updated = await fastify.prisma.shop.update({
       where: { id: request.params.id },
-      data: request.body,
+      data: updateData,
       include: { owner: { select: { id: true, name: true, phone: true } } },
     });
 
-    return updated;
+    return redactAgentKeyFields(updated);
   });
 
   // GET /admin/jobs — all jobs with filters
   fastify.get('/jobs', async (request) => {
-    const { status, shopId, date, limit = 50, offset = 0 } = request.query;
+    const { status, shopId, date } = request.query;
+    const limit = parseInteger(request.query.limit, { defaultValue: 50, min: 1, max: 200 });
+    const offset = parseInteger(request.query.offset, { defaultValue: 0, min: 0, max: 100000 });
 
     const where = {};
     if (status === 'completed') {
       where.status = { in: ['picked_up', 'cancelled'] };
-    } else if (status) {
+    } else if (status && JOB_STATUSES.has(status)) {
       where.status = status;
     }
     if (shopId) where.shopId = shopId;
@@ -147,8 +166,8 @@ async function adminRoutes(fastify) {
           payment: true,
         },
         orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset),
+        take: limit,
+        skip: offset,
       }),
       fastify.prisma.job.count({ where }),
     ]);
@@ -159,8 +178,9 @@ async function adminRoutes(fastify) {
   // GET /admin/revenue — revenue breakdown
   fastify.get('/revenue', async (request) => {
     const { days = 30 } = request.query;
+    const dayCount = parseInteger(days, { defaultValue: 30, min: 1, max: 366 });
     const since = new Date();
-    since.setDate(since.getDate() - parseInt(days));
+    since.setDate(since.getDate() - dayCount);
 
     const jobs = await fastify.prisma.job.findMany({
       where: {

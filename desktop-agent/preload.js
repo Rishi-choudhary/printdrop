@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld('printdrop', {
   cancelJob: (jobId) =>
     ipcRenderer.invoke('dashboard:cancel-job', { jobId }),
 
+  retryJob: (jobId) =>
+    ipcRenderer.invoke('dashboard:retry-job', { jobId }),
+
+  forceRetryPrint: (jobId) =>
+    ipcRenderer.invoke('dashboard:force-retry-print', { jobId }),
+
   setMode: (autoPrint) =>
     ipcRenderer.invoke('dashboard:set-mode', { autoPrint }),
 

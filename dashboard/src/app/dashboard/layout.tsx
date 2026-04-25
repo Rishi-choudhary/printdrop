@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Navbar } from '@/components/navbar';
@@ -8,6 +9,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, loading } = useAuth();
   const pathname = usePathname();
 
+  useEffect(() => {
+    if (!loading && (!user || (user.role !== 'shopkeeper' && user.role !== 'admin'))) {
+      window.location.assign('/login');
+    }
+  }, [loading, user]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center text-muted-foreground text-sm">
       Loading…
@@ -15,7 +22,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   if (!user || (user.role !== 'shopkeeper' && user.role !== 'admin')) {
-    if (typeof window !== 'undefined') window.location.href = '/login';
     return null;
   }
 

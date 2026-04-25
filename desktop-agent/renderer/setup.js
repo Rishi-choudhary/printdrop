@@ -245,6 +245,7 @@ async function handleStep5() {
     colorPaperSize: wizardData.colorPaperSize,
     colorDuplex: wizardData.colorDuplex,
     coverPage: document.getElementById('prefCoverPage').checked,
+    tokenStampPosition: document.getElementById('prefCoverPage').checked ? 'back-last-right' : 'none',
     soundEnabled: document.getElementById('prefSounds').checked,
     autoStart: document.getElementById('prefAutoStart').checked,
     notificationsEnabled: document.getElementById('prefNotifications').checked,
@@ -272,7 +273,8 @@ function setupTestPrint() {
     statusEl.className = 'banner info show';
 
     const chosen = document.getElementById('testPrinter').value || wizardData.bwPrinterSystemName;
-    const result = await window.printdrop.testPrint(chosen, false);
+    const isColorTest = !!wizardData.colorPrinterSystemName && chosen === wizardData.colorPrinterSystemName;
+    const result = await window.printdrop.testPrint(chosen, isColorTest);
 
     if (!result.ok) {
       showBanner(statusEl, 'error', result.error || 'Print failed. Check printer connection.');

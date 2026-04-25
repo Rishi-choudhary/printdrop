@@ -3,9 +3,12 @@
 const jobService = require('../services/job');
 const { notifyUser } = require('../services/notification');
 const messages = require('../bot/messages');
+const { findShopByAgentKey } = require('../services/agent-key');
 
 const AGENT_JOB_STATUSES = ['queued', 'printing', 'ready'];
 const AGENT_HISTORY_STATUSES = ['picked_up', 'cancelled'];
+const DEFAULT_AGENT_HISTORY_DAYS = 30;
+const MAX_AGENT_HISTORY_DAYS = 365;
 
 // Agent-scoped status transitions (subset of full transitions)
 const AGENT_ALLOWED_TRANSITIONS = {
@@ -22,8 +25,7 @@ async function agentRoutes(fastify) {
       return reply.status(401).send({ error: 'Missing or invalid authorization header' });
     }
     const token = authHeader.slice(7);
-    const shop = await fastify.prisma.shop.findFirst({
-      where: { agentKey: token },
+    const shop = await findShopByAgentKey(fastify.prisma, token, {
       include: {
         printers: {
           orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
@@ -57,8 +59,13 @@ async function agentRoutes(fastify) {
   }, async (request, reply) => {
     const { shop } = request;
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const requestedDays = Number.parseInt(request.query?.historyDays, 10);
+    const historyDays = Number.isFinite(requestedDays)
+      ? Math.min(Math.max(requestedDays, 1), MAX_AGENT_HISTORY_DAYS)
+      : DEFAULT_AGENT_HISTORY_DAYS;
+
+    const historyStart = new Date();
+    historyStart.setDate(historyStart.getDate() - historyDays);
 
     const jobs = await fastify.prisma.job.findMany({
       where: {
@@ -67,17 +74,20 @@ async function agentRoutes(fastify) {
           { status: { in: AGENT_JOB_STATUSES } },
           {
             status: { in: AGENT_HISTORY_STATUSES },
-            updatedAt: { gte: todayStart },
+            updatedAt: { gte: historyStart },
           },
         ],
       },
       include: {
         user: { select: { id: true, name: true, phone: true } },
       },
-      orderBy: { token: 'asc' },
+      orderBy: [
+        { createdAt: 'asc' },
+        { token: 'asc' },
+      ],
     });
 
-    return { jobs };
+    return { jobs, historyDays };
   });
 
   // ── POST /agent/jobs/:id/claim — atomic queued → printing ─────────────────
@@ -110,6 +120,34 @@ async function agentRoutes(fastify) {
     } catch {}
 
     return { claimed: true, job: updated };
+  });
+
+  // ── POST /agent/jobs/:id/retry — reset cancelled job to queued ───────────
+  fastify.post('/jobs/:id/retry', {
+    preHandler: [authenticateAgent],
+  }, async (request, reply) => {
+    const { shop } = request;
+
+    const job = await fastify.prisma.job.findUnique({
+      where: { id: request.params.id },
+    });
+    if (!job) return reply.status(404).send({ error: 'Job not found' });
+    if (job.shopId !== shop.id) return reply.status(403).send({ error: 'Not authorized for this job' });
+    if (job.status !== 'cancelled') {
+      return reply.status(400).send({ error: `Can only retry cancelled jobs; job is ${job.status}` });
+    }
+
+    const updated = await fastify.prisma.job.update({
+      where: { id: job.id },
+      data: { status: 'queued', cancelledAt: null },
+      include: { user: true, shop: true },
+    });
+
+    try {
+      await notifyUser(updated.userId, messages.statusUpdateMessage('queued', updated.token));
+    } catch {}
+
+    return { ok: true, job: updated };
   });
 
   // ── PATCH /agent/jobs/:id/status — agent-scoped status update ─────────────

@@ -17,6 +17,17 @@ Before running a release build, generate these from `icon.svg`:
 
 ## Quickest way to generate
 
+Use the checked-in generator:
+
+```bash
+npm run icons
+```
+
+It writes `build/icon.icns`, `build/icon.ico`, Linux PNGs under `build/icons/`,
+and the runtime notification icon at `assets/icons/icon.png`.
+
+## Alternative generators
+
 Install a one-shot generator globally:
 
 ```bash
@@ -34,6 +45,7 @@ npx icon-gen -i build/icon.svg -o build/ --icns --ico --favicon-png-sizes 128,25
 
 ## Tray icons (in-app, not build-time)
 
-The running app renders tray icons procedurally from SVG (see `renderSvgIcon()` in
-`main.js`) when `assets/icons/tray-*.png` do not exist. Drop real PNGs at those
-paths if you prefer crisp rasters at the tray's native size.
+The running app renders tray icons procedurally from SVG (see `renderTraySvg()`
+in `main.js`) when `assets/icons/tray-*.png` do not exist. Release builds should
+also include `assets/icons/icon.png` so Windows notifications and app windows use
+the same recognizable mark as the installer.

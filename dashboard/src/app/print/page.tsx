@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useShops } from '@/lib/hooks';
 import { api } from '@/lib/api';
+import { encodePathSegment, getSafePaymentUrl } from '@/lib/security';
 import { Navbar } from '@/components/navbar';
 import { FileUpload, UploadedFileMeta } from '@/components/file-upload';
 import { Card, CardBody } from '@/components/ui/card';
@@ -104,13 +105,14 @@ export default function PrintPage() {
       });
 
       // Create payment link
-      const { paymentLink } = await api.post(`/jobs/${job.id}/pay`, {});
+      const { paymentLink } = await api.post(`/jobs/${encodePathSegment(job.id)}/pay`, {});
 
       // Redirect to payment
-      if (paymentLink?.startsWith('http')) {
-        window.location.href = paymentLink;
+      const safePaymentLink = getSafePaymentUrl(paymentLink);
+      if (safePaymentLink) {
+        window.location.assign(safePaymentLink);
       } else {
-        router.push(`/pay/${job.id}`);
+        router.push(`/pay/${encodePathSegment(job.id)}`);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to create print job');
@@ -518,19 +520,22 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 
 function estimatePageCount(range: string, total: number): number {
   if (!range || range === 'all') return total;
-  try {
-    const pages = new Set<number>();
-    for (const part of range.split(',').map(s => s.trim())) {
-      if (part.includes('-')) {
-        const [a, b] = part.split('-').map(Number);
-        for (let i = a; i <= Math.min(b, total); i++) pages.add(i);
-      } else {
-        const n = parseInt(part, 10);
-        if (n >= 1 && n <= total) pages.add(n);
-      }
+  const pages = new Set<number>();
+
+  for (const part of range.split(',').map((s) => s.trim()).filter(Boolean)) {
+    const match = part.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if (!match) return total;
+
+    const start = Number(match[1]);
+    const end = match[2] ? Number(match[2]) : start;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+      return total;
     }
-    return pages.size || total;
-  } catch {
-    return total;
+
+    for (let i = start; i <= Math.min(end, total); i += 1) {
+      pages.add(i);
+    }
   }
+
+  return pages.size || total;
 }

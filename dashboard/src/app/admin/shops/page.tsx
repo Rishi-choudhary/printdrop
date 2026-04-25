@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Store, Plus, Power, MapPin, Clock } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { buildApiPath, encodePathSegment } from '@/lib/security';
 
 export default function AdminShopsPage() {
   const { data: shops, mutate, error } = useAdminShops();
@@ -20,7 +21,7 @@ export default function AdminShopsPage() {
 
   const toggleActive = async (shopId: string, isActive: boolean) => {
     try {
-      await api.patch(`/admin/shops/${shopId}`, { isActive: !isActive });
+      await api.patch(`/admin/shops/${encodePathSegment(shopId)}`, { isActive: !isActive });
       mutate();
     } catch (err: any) {
       toast(err.message || 'Action failed', 'error');
@@ -29,7 +30,7 @@ export default function AdminShopsPage() {
 
   const toggleAutoPrint = async (shopId: string, autoPrint: boolean) => {
     try {
-      await api.patch(`/admin/shops/${shopId}`, { autoPrint: !autoPrint });
+      await api.patch(`/admin/shops/${encodePathSegment(shopId)}`, { autoPrint: !autoPrint });
       mutate();
     } catch (err: any) {
       toast(err.message || 'Action failed', 'error');
@@ -44,7 +45,9 @@ export default function AdminShopsPage() {
       const fullOwnerPhone = form.ownerPhone.startsWith('+') ? form.ownerPhone : `+91${form.ownerPhone}`;
 
       // Look up owner in existing users
-      const usersData = await api.get<{ users: any[]; total: number }>(`/admin/users?search=${form.ownerPhone}`);
+      const usersData = await api.get<{ users: any[]; total: number }>(
+        buildApiPath('/admin/users', { search: form.ownerPhone })
+      );
       let owner = usersData.users?.find((u: any) => u.phone === fullOwnerPhone || u.phone.includes(form.ownerPhone));
 
       if (!owner) {

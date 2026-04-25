@@ -97,6 +97,12 @@ function shopListMessage(shops) {
     };
   }
 
+  // Gupshup list message supports max 10 items. For > 9 shops we paginate
+  // (leaving 1 slot for the "More shops" navigation button).
+  if (shops.length > 9) {
+    return shopListPagedMessage(shops, 0);
+  }
+
   let text = 'Select a shop:\n\n';
   const buttons = [];
 
@@ -109,6 +115,44 @@ function shopListMessage(shops) {
     text += `   Hours: ${hours}\n\n`;
     buttons.push({ text: `${num}. ${shop.name}`, callback_data: `shop_${shop.id}` });
   });
+
+  return { text, buttons };
+}
+
+/**
+ * Render a paginated shop list for large shop counts.
+ * Shows PAGE_SIZE shops per page with a "More shops ›" navigation button.
+ * allShops must be the full list; page is zero-indexed.
+ */
+const SHOP_PAGE_SIZE = 9; // keep 1 slot for "More" button within list's 10-item limit
+
+function shopListPagedMessage(allShops, page) {
+  if (!allShops || allShops.length === 0) {
+    return { text: 'Sorry, no shops are available right now. Please try again later.' };
+  }
+
+  const start = page * SHOP_PAGE_SIZE;
+  const end = Math.min(start + SHOP_PAGE_SIZE, allShops.length);
+  const pageShops = allShops.slice(start, end);
+  const hasMore = end < allShops.length;
+  const totalPages = Math.ceil(allShops.length / SHOP_PAGE_SIZE);
+
+  let text = `Select a shop (page ${page + 1} of ${totalPages}):\n\n`;
+  const buttons = [];
+
+  pageShops.forEach((shop, i) => {
+    const globalNum = start + i + 1;
+    const distance = shop.distance ? ` (${shop.distance})` : '';
+    const hours = `${shop.opensAt} - ${shop.closesAt}`;
+    text += `*${globalNum}. ${escapeText(shop.name)}*${distance}\n`;
+    text += `   ${escapeText(shop.address || 'Address not available')}\n`;
+    text += `   Hours: ${hours}\n\n`;
+    buttons.push({ text: `${globalNum}. ${shop.name}`, callback_data: `shop_${shop.id}` });
+  });
+
+  if (hasMore) {
+    buttons.push({ text: 'More shops ›', callback_data: `shop_page_${page + 1}` });
+  }
 
   return { text, buttons };
 }
@@ -293,6 +337,7 @@ module.exports = {
   paperSizeMessage,
   sidesMessage,
   shopListMessage,
+  shopListPagedMessage,
   priceSummaryMessage,
   paymentLinkMessage,
   tokenMessage,

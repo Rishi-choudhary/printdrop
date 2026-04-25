@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test src/tests/whatsapp-flow.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1022.0",

@@ -14,15 +14,9 @@
 
 import { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import Cookies from 'js-cookie';
 
-// Upload directly to the backend when NEXT_PUBLIC_API_URL is set, bypassing
-// Vercel's rewrite proxy (which has a 4.5 MB body-size limit that kills large
-// mobile photo uploads). Falls back to the rewrite proxy for local dev.
-const UPLOAD_URL =
-  process.env.NEXT_PUBLIC_API_URL
-    ? `${process.env.NEXT_PUBLIC_API_URL}/api/files/upload`
-    : '/api/files/upload';
+// Use the same-origin proxy so the browser sends the HttpOnly session cookie.
+const UPLOAD_URL = '/api/files/upload';
 
 const ACCEPTED = ['application/pdf', 'image/jpeg', 'image/png',
   'application/msword',
@@ -86,8 +80,6 @@ export function FileUpload({ onUploaded, onClear, disabled, className = '' }: Pr
     const formData = new FormData();
     formData.append('file', file);
 
-    const token = Cookies.get('token');
-
     // Use XMLHttpRequest so we get upload progress events
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -124,7 +116,7 @@ export function FileUpload({ onUploaded, onClear, disabled, className = '' }: Pr
       xhr.addEventListener('timeout', () => reject(new Error('Upload timed out. Try a smaller file.')));
 
       xhr.open('POST', UPLOAD_URL);
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.withCredentials = true;
       xhr.timeout = 120_000; // 2 min
       xhr.send(formData);
     }).catch((err: Error) => {

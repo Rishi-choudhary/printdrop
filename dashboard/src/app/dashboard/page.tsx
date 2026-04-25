@@ -11,6 +11,7 @@ import {
   WifiOff, Settings, BarChart3, LogOut, History, MonitorOff,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { encodePathSegment } from '@/lib/security';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Job {
@@ -287,7 +288,7 @@ export default function KDSPage() {
 
   const handleAction = async (id: string, status: string) => {
     setUpdating(id);
-    try { await api.patch(`/jobs/${id}/status`, { status }); mutate(); }
+    try { await api.patch(`/jobs/${encodePathSegment(id)}/status`, { status }); mutate(); }
     catch (e: any) { toast(e.message || 'Failed to update job status', 'error'); }
     finally { setUpdating(null); }
   };
@@ -297,7 +298,7 @@ export default function KDSPage() {
     setAutoMode(next);
     localStorage.setItem('kds_auto', String(next));
     if (user?.shop?.id) {
-      api.patch(`/shops/${user.shop.id}`, { autoPrint: next }).catch(() => {
+      api.patch(`/shops/${encodePathSegment(user.shop.id)}`, { autoPrint: next }).catch(() => {
         // Revert optimistic update if backend fails
         setAutoMode(!next);
         localStorage.setItem('kds_auto', String(!next));

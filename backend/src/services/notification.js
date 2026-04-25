@@ -11,6 +11,13 @@ function getTelegramBot() {
   return telegramBot;
 }
 
+/**
+ * Exponential backoff sleep helper.
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function sendTelegramMessage(chatId, text, buttons) {
   const bot = getTelegramBot();
   if (!bot) {
@@ -73,6 +80,28 @@ function buildListMessage(text, buttons) {
 }
 
 /**
+ * Parse structured error from Gupshup JSON response body.
+ * Returns a loggable object with code, message, destination.
+ */
+function parseGupshupError(status, body, dest) {
+  try {
+    const parsed = JSON.parse(body);
+    return {
+      httpStatus: status,
+      code: parsed.response?.status || parsed.status,
+      message: parsed.response?.details || parsed.message || body.slice(0, 200),
+      destination: `${dest.slice(0, 4)}****`,
+    };
+  } catch {
+    return {
+      httpStatus: status,
+      message: body.slice(0, 200),
+      destination: `${dest.slice(0, 4)}****`,
+    };
+  }
+}
+
+/**
  * Send a WhatsApp message via Gupshup API.
  *
  * Button rules (WhatsApp platform limits):
@@ -122,23 +151,200 @@ async function sendWhatsAppMessage(phone, text, buttons) {
     message: JSON.stringify(message),
   });
 
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        apikey: apiKey,
-      },
-      body: params.toString(),
-    });
+  const MAX_RETRIES = 3;
+  let lastErr;
 
-    if (!response.ok) {
-      console.error('Gupshup API error:', response.status, await response.text());
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          apikey: apiKey,
+        },
+        body: params.toString(),
+      });
+
+      if (response.ok) return { ok: true, status: response.status };
+
+      const errText = await response.text();
+
+      // 4xx errors are permanent — do not retry
+      if (response.status >= 400 && response.status < 500) {
+        const errInfo = parseGupshupError(response.status, errText, dest);
+        console.error('[gupshup] Permanent send error:', errInfo);
+        return { ok: false, status: response.status, error: errText };
+      }
+
+      // 5xx — transient, retry
+      lastErr = `HTTP ${response.status}: ${errText.slice(0, 100)}`;
+      console.warn(`[gupshup] Transient error (attempt ${attempt}/${MAX_RETRIES}):`, lastErr);
+    } catch (err) {
+      lastErr = err.message;
+      console.warn(`[gupshup] Network error (attempt ${attempt}/${MAX_RETRIES}):`, err.message);
     }
 
-    return response;
-  } catch (err) {
-    console.error('Gupshup send error:', err.message);
+    if (attempt < MAX_RETRIES) {
+      await sleep(500 * Math.pow(2, attempt - 1)); // 500ms, 1000ms
+    }
+  }
+
+  console.error(`[gupshup] Failed to send after ${MAX_RETRIES} attempts to ${dest.slice(0, 4)}****:`, lastErr);
+  return { ok: false, error: lastErr };
+}
+
+/**
+ * Send a Gupshup HSM/template message — for business-initiated messages outside
+ * the 24-hour session window.
+ *
+ * Templates must be pre-approved in the Gupshup dashboard under Templates.
+ * templateId is the template name/ID shown in the Gupshup dashboard.
+ * params is an array of string values filling {{1}}, {{2}}, … placeholders in order.
+ *
+ * Falls back to sendWhatsAppMessage with fallbackText if templateId is not set
+ * or if the template send fails.
+ */
+async function sendWhatsAppTemplateMessage(phone, templateId, params, fallbackText) {
+  const { templateApiUrl, apiKey, sourceNumber, appName } = config.whatsapp;
+
+  if (!apiKey || !sourceNumber) {
+    console.warn('[gupshup] Not configured — cannot send template message');
+    return;
+  }
+
+  if (!templateId) {
+    // No template configured — fall back to regular freeform message
+    if (fallbackText) return sendWhatsAppMessage(phone, fallbackText);
+    return;
+  }
+
+  const dest = String(phone).replace(/^\+/, '');
+
+  const templatePayload = {
+    id: templateId,
+    params: params || [],
+  };
+
+  const postParams = new URLSearchParams({
+    channel: 'whatsapp',
+    source: sourceNumber,
+    destination: dest,
+    'src.name': appName,
+    template: JSON.stringify(templatePayload),
+    message: JSON.stringify({ type: 'text', text: fallbackText || '' }),
+  });
+
+  const MAX_RETRIES = 3;
+  let lastErr;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(templateApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          apikey: apiKey,
+        },
+        body: postParams.toString(),
+      });
+
+      if (response.ok) return { ok: true, status: response.status };
+
+      const errText = await response.text();
+
+      if (response.status >= 400 && response.status < 500) {
+        const errInfo = parseGupshupError(response.status, errText, dest);
+        console.error('[gupshup] Template send permanent error:', errInfo);
+        // 4xx on template → fall back to regular message
+        if (fallbackText) return sendWhatsAppMessage(phone, fallbackText);
+        return { ok: false, status: response.status, error: errText };
+      }
+
+      lastErr = `HTTP ${response.status}: ${errText.slice(0, 100)}`;
+      console.warn(`[gupshup] Template transient error (attempt ${attempt}/${MAX_RETRIES}):`, lastErr);
+    } catch (err) {
+      lastErr = err.message;
+      console.warn(`[gupshup] Template network error (attempt ${attempt}/${MAX_RETRIES}):`, err.message);
+    }
+
+    if (attempt < MAX_RETRIES) {
+      await sleep(500 * Math.pow(2, attempt - 1));
+    }
+  }
+
+  console.error(`[gupshup] Template failed after ${MAX_RETRIES} attempts to ${dest.slice(0, 4)}****:`, lastErr);
+  // Last resort fallback
+  if (fallbackText) return sendWhatsAppMessage(phone, fallbackText);
+  return { ok: false, error: lastErr };
+}
+
+/**
+ * Send the payment-confirmed / token-issued notification to a user.
+ * Uses an approved HSM template if GUPSHUP_TEMPLATE_TOKEN_ISSUED is configured,
+ * so this is safe to send outside the 24-hour session window (e.g. from the
+ * Razorpay webhook which fires asynchronously after the user's last message).
+ */
+async function notifyTokenIssued(userId, token, shopName) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { userId },
+    orderBy: { updatedAt: 'desc' },
+  });
+
+  if (!conversation) {
+    console.warn(`[notification] No conversation found for user ${userId} — cannot send token notification`);
+    return;
+  }
+
+  const tokenStr = String(token).padStart(3, '0');
+  const fallbackText =
+    `Payment confirmed!\n\nYour token: *#${tokenStr}*\nShop: *${shopName}*\n\nShow this token number at the shop to pick up your print.`;
+
+  if (conversation.platform === 'telegram') {
+    return sendTelegramMessage(conversation.chatId, fallbackText);
+  }
+
+  if (conversation.platform === 'whatsapp') {
+    const templateId = config.whatsapp.templates.tokenIssued;
+    return sendWhatsAppTemplateMessage(
+      conversation.chatId,
+      templateId,
+      [tokenStr, shopName],
+      fallbackText,
+    );
+  }
+}
+
+/**
+ * Send the "print is ready for pickup" notification to a user.
+ * Uses an approved HSM template if GUPSHUP_TEMPLATE_READY_FOR_PICKUP is configured.
+ */
+async function notifyReadyForPickup(userId, token, shopName) {
+  const conversation = await prisma.conversation.findFirst({
+    where: { userId },
+    orderBy: { updatedAt: 'desc' },
+  });
+
+  if (!conversation) {
+    console.warn(`[notification] No conversation found for user ${userId} — cannot send ready notification`);
+    return;
+  }
+
+  const tokenStr = String(token).padStart(3, '0');
+  const fallbackText =
+    `Your print is ready! *#${tokenStr}*\nPick up at *${shopName}*`;
+
+  if (conversation.platform === 'telegram') {
+    return sendTelegramMessage(conversation.chatId, fallbackText);
+  }
+
+  if (conversation.platform === 'whatsapp') {
+    const templateId = config.whatsapp.templates.readyForPickup;
+    return sendWhatsAppTemplateMessage(
+      conversation.chatId,
+      templateId,
+      [tokenStr, shopName],
+      fallbackText,
+    );
   }
 }
 
@@ -186,8 +392,11 @@ async function notifyUser(userId, messageObj) {
 
 module.exports = {
   notifyUser,
+  notifyTokenIssued,
+  notifyReadyForPickup,
   sendTelegramMessage,
   sendWhatsAppMessage,
+  sendWhatsAppTemplateMessage,
   setTelegramBot,
   getTelegramBot,
 };

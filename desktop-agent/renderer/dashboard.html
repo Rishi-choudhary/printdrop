@@ -86,6 +86,20 @@
     </div>
   </section>
 
+  <!-- ── Status banners ──────────────────────────────────────────────── -->
+  <div class="status-banner offline-banner" id="offlineBanner" hidden>
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>
+    </svg>
+    <span>Offline — showing cached jobs. Changes will sync when reconnected.</span>
+  </div>
+  <div class="status-banner sync-banner" id="syncBanner" hidden>
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    </svg>
+    <span id="syncBannerText">1 action pending sync…</span>
+  </div>
+
   <!-- ── Toolbar (search + filters) ──────────────────────────────────── -->
   <div class="toolbar">
     <div class="search-box">
@@ -100,6 +114,7 @@
       <button class="chip" data-filter="queued">Queued</button>
       <button class="chip" data-filter="printing">Printing</button>
       <button class="chip" data-filter="ready">Ready</button>
+      <button class="chip" data-filter="needs_review">Review</button>
       <button class="chip" data-filter="cancelled">Failed</button>
     </div>
   </div>

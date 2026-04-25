@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -15,6 +15,15 @@ export default function RegisterShopPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      router.replace('/login?redirect=/register-shop');
+    } else if (user.role === 'shopkeeper' && user.shop) {
+      router.replace('/dashboard/onboarding');
+    }
+  }, [loading, router, user]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -24,12 +33,10 @@ export default function RegisterShopPage() {
   }
 
   if (!user) {
-    router.push('/login?redirect=/register-shop');
     return null;
   }
 
   if (user.role === 'shopkeeper' && user.shop) {
-    router.push('/dashboard/onboarding');
     return null;
   }
 
@@ -50,7 +57,7 @@ export default function RegisterShopPage() {
         phone: phone.trim() || undefined,
       });
       // Reload auth to pick up new role
-      window.location.href = '/dashboard/onboarding';
+      window.location.assign('/dashboard/onboarding');
     } catch (err: any) {
       setError(err.message || 'Failed to register shop');
       setSubmitting(false);

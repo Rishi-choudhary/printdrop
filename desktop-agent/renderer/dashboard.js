@@ -84,6 +84,7 @@ function applyTheme(theme) {
 function renderState(state) {
   if (!state) return;
 
+  // Connection + status
   const dot = document.getElementById('statusDot');
   dot.className = 'status-dot' + (state.connected ? ' connected' : ' error');
 
@@ -95,6 +96,18 @@ function renderState(state) {
     : 'Offline — check connection';
 
   renderModeBtn(state.autoPrint);
+
+  // Banners
+  const offlineBanner = document.getElementById('offlineBanner');
+  offlineBanner.hidden = state.connected;
+
+  const syncBanner = document.getElementById('syncBanner');
+  const syncCount = state.pendingSyncCount || 0;
+  syncBanner.hidden = syncCount === 0;
+  if (syncCount > 0) {
+    document.getElementById('syncBannerText').textContent =
+      `${syncCount} action${syncCount !== 1 ? 's' : ''} pending sync — will retry automatically`;
+  }
 
   // Stats — use serverQueue counts when available
   const stats = state.stats || {};
@@ -124,12 +137,8 @@ function renderJobList() {
   const jobList = document.getElementById('jobList');
 
   // Merge serverQueue (live jobs) with recentJobs (completed/local) for display.
-  // serverQueue has live queued/printing/ready jobs from backend.
-  // recentJobs has recently processed jobs.
   const serverQueue = _state?.serverQueue || [];
   const serverIds = new Set(serverQueue.map((j) => j.id));
-
-  // For display: server queue first, then recent local jobs not in server queue
   const recentOnly = (_state?.recentJobs || []).filter((j) => !serverIds.has(j.id));
   const allJobs = [...serverQueue, ...recentOnly];
 
@@ -155,6 +164,7 @@ function renderJobList() {
   jobList.innerHTML = jobs.map((job) => {
     const token = String(job.token).padStart(3, '0');
     const isActing = _actionInProgress === job.id;
+    const effectiveStatus = job._localStatus || job.status;
 
     const specs = [
       job.pageCount ? `${job.pageCount} pg` : null,
@@ -165,12 +175,20 @@ function renderJobList() {
       job.printerName || null,
     ].filter(Boolean);
 
+    // Customer info (name or phone if available)
+    const customer = job.user?.name || job.user?.phone || null;
+    if (customer) specs.push(`· ${customer}`);
+
     const meta = specs.map((p, i) => i === 0
       ? `<span>${escHtml(p)}</span>`
       : `<span class="sep">·</span><span>${escHtml(p)}</span>`
     ).join('');
 
-    const actions = buildActionButtons(job, autoPrint, isActing);
+    const errorHtml = job._localError
+      ? `<div class="job-error">${escHtml(job._localError)}</div>`
+      : '';
+
+    const actions = buildActionButtons(job, autoPrint, isActing, effectiveStatus);
 
     return `
       <div class="job-row ${isActing ? 'job-acting' : ''}" data-id="${escHtml(job.id)}">
@@ -178,9 +196,10 @@ function renderJobList() {
         <div class="job-body">
           <div class="job-name">${escHtml(job.fileName || '')}</div>
           <div class="job-meta">${meta}</div>
+          ${errorHtml}
           ${actions}
         </div>
-        <div class="job-badge ${escHtml(job.status)}">${statusLabel(job.status)}</div>
+        <div class="job-badge ${escHtml(effectiveStatus)}">${statusLabel(effectiveStatus)}</div>
       </div>
     `;
   }).join('');
@@ -196,12 +215,26 @@ function renderJobList() {
   });
 }
 
-function buildActionButtons(job, autoPrint, isActing) {
+function buildActionButtons(job, autoPrint, isActing, effectiveStatus) {
   if (isActing) {
     return `<div class="job-actions"><span class="job-acting-label">Processing…</span></div>`;
   }
 
   const btns = [];
+
+  if (effectiveStatus === 'needs_review') {
+    btns.push(`<button class="job-btn job-btn-review" data-action="force-retry" title="Confirm and retry print">Retry Print</button>`);
+    btns.push(`<button class="job-btn job-btn-cancel" data-action="cancel" title="Cancel this job">Cancel</button>`);
+    return `<div class="job-actions">${btns.join('')}</div>`;
+  }
+
+  if (effectiveStatus === 'sync_pending_ready') {
+    return `<div class="job-actions"><span class="job-auto-label">Syncing ready status…</span></div>`;
+  }
+
+  if (effectiveStatus === 'sync_pending_pickup') {
+    return `<div class="job-actions"><span class="job-auto-label">Syncing pickup…</span></div>`;
+  }
 
   if (job.status === 'queued') {
     if (!autoPrint) {
@@ -222,7 +255,8 @@ function buildActionButtons(job, autoPrint, isActing) {
   }
 
   if (job.status === 'cancelled') {
-    return '';
+    btns.push(`<button class="job-btn job-btn-retry" data-action="retry" title="Retry this job">Retry</button>`);
+    return `<div class="job-actions">${btns.join('')}</div>`;
   }
 
   if (btns.length === 0) return '';
@@ -231,6 +265,28 @@ function buildActionButtons(job, autoPrint, isActing) {
 
 async function handleJobAction(action, jobId) {
   if (_actionInProgress) return;
+
+  // Needs-review force retry requires confirmation
+  if (action === 'force-retry') {
+    const job = (_state?.serverQueue || []).find((j) => j.id === jobId);
+    const tokenStr = job ? `#${String(job.token).padStart(3, '0')}` : jobId.slice(-6);
+    const confirmed = confirm(
+      `Retry printing ${tokenStr}?\n\n` +
+      `This job was in an uncertain state when the app last closed. ` +
+      `Only retry if you are sure this job was NOT already printed — ` +
+      `retrying a job that already printed will cause a duplicate print.\n\n` +
+      `Click OK to retry, Cancel to abort.`
+    );
+    if (!confirmed) return;
+  }
+
+  if (action === 'retry') {
+    const job = (_state?.serverQueue || []).find((j) => j.id === jobId);
+    const tokenStr = job ? `#${String(job.token).padStart(3, '0')}` : jobId.slice(-6);
+    const confirmed = confirm(`Retry printing ${tokenStr}? This will re-queue the job.`);
+    if (!confirmed) return;
+  }
+
   _actionInProgress = jobId;
   renderJobList();
 
@@ -242,6 +298,10 @@ async function handleJobAction(action, jobId) {
       result = await window.printdrop.pickupJob(jobId);
     } else if (action === 'cancel') {
       result = await window.printdrop.cancelJob(jobId);
+    } else if (action === 'retry') {
+      result = await window.printdrop.retryJob(jobId);
+    } else if (action === 'force-retry') {
+      result = await window.printdrop.forceRetryPrint(jobId);
     }
   } catch (err) {
     console.error('Action error:', err);
@@ -271,9 +331,22 @@ function renderPrinters() {
 }
 
 function passesFilter(job) {
-  if (_filter !== 'all' && job.status !== _filter) return false;
+  const effectiveStatus = job._localStatus || job.status;
+
+  if (_filter !== 'all') {
+    if (_filter === 'needs_review') {
+      if (effectiveStatus !== 'needs_review') return false;
+    } else if (_filter === 'printing') {
+      // Show printing + sync_pending (those are printing that succeeded locally)
+      if (effectiveStatus !== 'printing' && !effectiveStatus?.startsWith('sync_pending')) return false;
+    } else {
+      if (effectiveStatus !== _filter) return false;
+    }
+  }
+
   if (!_search) return true;
-  const haystack = `${job.token} ${job.fileName || ''} ${job.printerName || ''}`.toLowerCase();
+  const customer = job.user?.name || job.user?.phone || '';
+  const haystack = `${job.token} ${job.fileName || ''} ${job.printerName || ''} ${customer}`.toLowerCase();
   return haystack.includes(_search);
 }
 
@@ -281,13 +354,16 @@ function passesFilter(job) {
 
 function statusLabel(status) {
   const map = {
-    queued: 'QUEUED',
-    printing: 'PRINTING',
-    ready: 'READY',
-    picked_up: 'PICKED UP',
-    cancelled: 'FAILED',
+    queued:               'QUEUED',
+    printing:             'PRINTING',
+    ready:                'READY',
+    picked_up:            'PICKED UP',
+    cancelled:            'FAILED',
+    needs_review:         'NEEDS REVIEW',
+    sync_pending_ready:   'SYNC PENDING',
+    sync_pending_pickup:  'SYNC PENDING',
   };
-  return map[status] || String(status).toUpperCase();
+  return map[status] || String(status).toUpperCase().replace(/_/g, ' ');
 }
 
 function timeSince(iso) {

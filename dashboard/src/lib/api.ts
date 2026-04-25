@@ -1,5 +1,3 @@
-import Cookies from 'js-cookie';
-
 // Always use relative /api path — Vercel/Next.js rewrites proxy to the backend
 const API_BASE = '/api';
 
@@ -7,20 +5,21 @@ export async function apiFetch<T = any>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = Cookies.get('token');
+  if (!path.startsWith('/')) {
+    throw new Error('API path must start with /');
+  }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  const headers = new Headers(options.headers);
+  const hasBody = options.body !== undefined && options.body !== null;
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (hasBody && !isFormData && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    credentials: 'include',
   });
 
   if (!res.ok) {
@@ -28,7 +27,16 @@ export async function apiFetch<T = any>(
     throw new Error(body.error || `HTTP ${res.status}`);
   }
 
-  return res.json();
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
 
 export const api = {
@@ -46,13 +54,12 @@ export const api = {
    * This helper is a simple fetch-based fallback without progress.
    */
   upload: async <T = any>(path: string, file: File): Promise<T> => {
-    const token = Cookies.get('token');
     const form  = new FormData();
     form.append('file', file);
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
+      credentials: 'include',
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: 'Upload failed' }));

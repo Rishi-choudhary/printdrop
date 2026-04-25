@@ -1,4 +1,5 @@
 const { authenticate, requireRole } = require('../middleware/auth');
+const { findShopByAgentKey } = require('../services/agent-key');
 
 async function printerRoutes(fastify) {
   // ─── Agent key auth helper ────────────────────────────────────────────────
@@ -8,7 +9,7 @@ async function printerRoutes(fastify) {
       return reply.status(401).send({ error: 'Missing or invalid authorization header' });
     }
     const token = authHeader.slice(7);
-    const shop = await fastify.prisma.shop.findFirst({ where: { agentKey: token } });
+    const shop = await findShopByAgentKey(fastify.prisma, token);
     if (!shop) {
       return reply.status(401).send({ error: 'Invalid agent key' });
     }

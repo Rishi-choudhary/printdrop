@@ -15,6 +15,7 @@
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio",
     "db:seed": "node prisma/seed.js",
+    "db:migrate-agent-keys": "node scripts/migrate-agent-keys.js",
     "db:setup": "node scripts/setup-supabase.js",
     "build": "npm run build -w dashboard"
   },

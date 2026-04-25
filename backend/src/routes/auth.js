@@ -2,6 +2,12 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const config = require('../config');
 const { authenticate } = require('../middleware/auth');
+const {
+  createAuthCookie,
+  clearAuthCookie,
+  clearLegacyAuthCookie,
+} = require('../services/session-cookie');
+const { redactUserShop } = require('../services/agent-key');
 
 async function authRoutes(fastify, opts) {
   // ── Deprecated OTP endpoints ─────────────────────────────────────────────
@@ -29,7 +35,7 @@ async function authRoutes(fastify, opts) {
    * POST /auth/shopkeeper-login
    * Body: { phone: string, pin: string }
    * Authenticates a shopkeeper or admin with their phone + 6-digit PIN.
-   * Returns { token, user } on success.
+   * Sets an HttpOnly session cookie and returns { user } on success.
    */
   fastify.post('/shopkeeper-login', async (request, reply) => {
     const { phone, pin } = request.body || {};
@@ -98,11 +104,27 @@ async function authRoutes(fastify, opts) {
     );
 
     // Strip pinHash before returning user object
-    const { pinHash, ...safeUser } = user;
-    return reply.send({ token, user: safeUser });
+    const { pinHash, ...safeUser } = redactUserShop(user);
+    reply.header('Set-Cookie', [
+      createAuthCookie(token, { secure: !config.isDev }),
+      clearLegacyAuthCookie({ secure: !config.isDev }),
+    ]);
+    return reply.send({ user: safeUser });
   });
 
   // ── Current user ─────────────────────────────────────────────────────────
+
+  /**
+   * POST /auth/logout
+   * Clears the HttpOnly session cookie and any legacy JavaScript-readable token.
+   */
+  fastify.post('/logout', async (request, reply) => {
+    reply.header('Set-Cookie', [
+      clearAuthCookie({ secure: !config.isDev }),
+      clearLegacyAuthCookie({ secure: !config.isDev }),
+    ]);
+    return reply.send({ ok: true });
+  });
 
   /**
    * GET /auth/me

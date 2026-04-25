@@ -15,6 +15,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const { randomPin, validatePin } = require('./lib/demo-seed');
 
 const ENV_PATH = path.resolve(__dirname, '../.env');
 
@@ -25,6 +26,68 @@ function log(msg) { console.log(`\x1b[36m[setup]\x1b[0m ${msg}`); }
 function success(msg) { console.log(`\x1b[32m  ✓\x1b[0m ${msg}`); }
 function error(msg) { console.log(`\x1b[31m  ✗\x1b[0m ${msg}`); }
 function warn(msg) { console.log(`\x1b[33m  !\x1b[0m ${msg}`); }
+
+function parsePostgresUrl(value, label) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label} must be a valid PostgreSQL URL`);
+  }
+
+  if (!['postgresql:', 'postgres:'].includes(parsed.protocol)) {
+    throw new Error(`${label} must start with postgresql:// or postgres://`);
+  }
+  if (!parsed.hostname || !parsed.username || !parsed.pathname || parsed.pathname === '/') {
+    throw new Error(`${label} must include username, host, and database name`);
+  }
+  if (value.includes('\n') || value.includes('\r')) {
+    throw new Error(`${label} cannot contain newlines`);
+  }
+  return parsed;
+}
+
+function addPgbouncerParam(rawUrl) {
+  const parsed = new URL(rawUrl);
+  if (!parsed.searchParams.has('pgbouncer')) {
+    parsed.searchParams.set('pgbouncer', 'true');
+  }
+  return parsed.toString();
+}
+
+function envLine(key, value) {
+  if (String(value).includes('\n') || String(value).includes('\r')) {
+    throw new Error(`${key} cannot contain newlines`);
+  }
+  return `${key}=${JSON.stringify(String(value))}`;
+}
+
+function setEnvValue(content, key, value) {
+  const uncommentedKey = new RegExp(`^${key}=.*$`, 'm');
+  const commentedKey = new RegExp(`^#\\s*${key}=.*$`, 'gm');
+  const clean = content.replace(commentedKey, '').replace(/\n{3,}/g, '\n\n');
+  const line = envLine(key, value);
+
+  if (uncommentedKey.test(clean)) {
+    return clean.replace(uncommentedKey, line);
+  }
+
+  return clean.trimEnd() ? `${clean.trimEnd()}\n${line}\n` : `${line}\n`;
+}
+
+function getEnvValue(content, key) {
+  const match = content.match(new RegExp(`^${key}=(.*)$`, 'm'));
+  if (!match) return undefined;
+  const raw = match[1].trim();
+  if (raw.startsWith('"')) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw.slice(1, raw.endsWith('"') ? -1 : undefined);
+    }
+  }
+  return raw.replace(/^'|'$/g, '');
+}
 
 async function main() {
   console.log('');
@@ -48,57 +111,42 @@ async function main() {
   const dbUrl = await ask('  Paste DATABASE_URL (port 6543, transaction pooler):\n  > ');
   const directUrl = await ask('  Paste DIRECT_URL (port 5432, session/direct):\n  > ');
 
-  if (!dbUrl.startsWith('postgresql://') && !dbUrl.startsWith('postgres://')) {
-    error('DATABASE_URL must start with postgresql:// or postgres://');
-    process.exit(1);
-  }
-  if (!directUrl.startsWith('postgresql://') && !directUrl.startsWith('postgres://')) {
-    error('DIRECT_URL must start with postgresql:// or postgres://');
+  try {
+    parsePostgresUrl(dbUrl, 'DATABASE_URL');
+    parsePostgresUrl(directUrl, 'DIRECT_URL');
+  } catch (err) {
+    error(err.message);
     process.exit(1);
   }
 
   // Ensure pgbouncer param on pooled URL
-  let finalDbUrl = dbUrl;
-  if (!finalDbUrl.includes('pgbouncer=true')) {
-    finalDbUrl += (finalDbUrl.includes('?') ? '&' : '?') + 'pgbouncer=true';
-  }
+  const finalDbUrl = addPgbouncerParam(dbUrl);
 
   success('Connection strings received');
 
   // Step 2: Update .env
   log('Step 2: Updating .env file');
 
-  let envContent = fs.readFileSync(ENV_PATH, 'utf-8');
+  let envContent = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf-8') : '';
 
-  // Replace or add DATABASE_URL
-  if (envContent.includes('DATABASE_URL=')) {
-    envContent = envContent.replace(
-      /^DATABASE_URL=.*$/m,
-      `DATABASE_URL="${finalDbUrl}"`
-    );
-  } else {
-    envContent = `DATABASE_URL="${finalDbUrl}"\n` + envContent;
-  }
+  const demoShopkeeperPin =
+    process.env.PRINTDROP_DEMO_SHOPKEEPER_PIN ||
+    getEnvValue(envContent, 'PRINTDROP_DEMO_SHOPKEEPER_PIN') ||
+    randomPin();
+  const adminPin =
+    process.env.PRINTDROP_ADMIN_PIN ||
+    getEnvValue(envContent, 'PRINTDROP_ADMIN_PIN') ||
+    randomPin();
+  validatePin('PRINTDROP_DEMO_SHOPKEEPER_PIN', demoShopkeeperPin);
+  validatePin('PRINTDROP_ADMIN_PIN', adminPin);
 
-  // Remove old commented DATABASE_URL lines
-  envContent = envContent.replace(/^#\s*DATABASE_URL=.*$/gm, '');
-
-  // Add or replace DIRECT_URL
-  if (envContent.includes('DIRECT_URL=')) {
-    envContent = envContent.replace(
-      /^DIRECT_URL=.*$/m,
-      `DIRECT_URL="${directUrl}"`
-    );
-  } else {
-    // Add after DATABASE_URL
-    envContent = envContent.replace(
-      /^(DATABASE_URL=.*)$/m,
-      `$1\nDIRECT_URL="${directUrl}"`
-    );
-  }
+  envContent = setEnvValue(envContent, 'DATABASE_URL', finalDbUrl);
+  envContent = setEnvValue(envContent, 'DIRECT_URL', directUrl);
+  envContent = setEnvValue(envContent, 'PRINTDROP_DEMO_SHOPKEEPER_PIN', demoShopkeeperPin);
+  envContent = setEnvValue(envContent, 'PRINTDROP_ADMIN_PIN', adminPin);
 
   fs.writeFileSync(ENV_PATH, envContent);
-  success('.env updated with Supabase URLs');
+  success('.env updated with Supabase URLs and demo login PINs');
 
   // Step 3: Generate Prisma client
   log('Step 3: Generating Prisma client');
@@ -131,7 +179,13 @@ async function main() {
     execSync('node scripts/seed-supabase.js', {
       cwd: path.resolve(__dirname, '..'),
       stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL: finalDbUrl, DIRECT_URL: directUrl },
+      env: {
+        ...process.env,
+        DATABASE_URL: finalDbUrl,
+        DIRECT_URL: directUrl,
+        PRINTDROP_DEMO_SHOPKEEPER_PIN: demoShopkeeperPin,
+        PRINTDROP_ADMIN_PIN: adminPin,
+      },
     });
     success('Database seeded');
   } catch (e) {

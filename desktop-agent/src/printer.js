@@ -7,6 +7,7 @@ const path = require('path');
 const { ensureSumatra } = require('./sumatra');
 
 const platform = os.platform();
+const TEST_PRINT_TIMEOUT_MS = platform === 'win32' ? 420_000 : 60_000;
 
 function log(...args) {
   try { require('./logger').info(args.join(' ')); } catch { console.log(...args); }
@@ -240,10 +241,8 @@ function printOnWindowsChromium(filePath, { printerName, copies, doubleSided, co
 
 // ─── Test print ───────────────────────────────────────────────────────────────
 // Called from setup wizard/settings to verify local printer connectivity.
-function printTestPage(printerName, color = false) {
-  const { BrowserWindow } = require('electron');
-
-  const html = `<!DOCTYPE html><html><head>
+function buildTestPageHtml(printerName, color = false) {
+  return `<!DOCTYPE html><html><head>
   <meta charset="utf-8">
   <style>
     body { font-family: Arial, sans-serif; margin: 40px; color: #111; }
@@ -256,7 +255,7 @@ function printTestPage(printerName, color = false) {
   <h1>PrintDrop — Test Page</h1>
   <hr>
   <p class="lbl">Printer</p>
-  <p class="val">${printerName || 'System Default'}</p>
+  <p class="val">${escapeHtml(printerName || 'System Default')}</p>
   <p class="lbl">Mode</p>
   <p class="val">${color ? 'Color' : 'Black & White'}</p>
   <p class="lbl">Date / Time</p>
@@ -264,6 +263,11 @@ function printTestPage(printerName, color = false) {
   <hr>
   <p class="ok">&#10003; If you can read this, your printer is configured correctly.</p>
   </body></html>`;
+}
+
+function printTestPage(printerName, color = false) {
+  const { BrowserWindow } = require('electron');
+  const html = buildTestPageHtml(printerName, color);
 
   return new Promise((resolve, reject) => {
     const win = new BrowserWindow({ show: false });
@@ -284,17 +288,6 @@ function printTestPage(printerName, color = false) {
     win.webContents.once('did-finish-load', async () => {
       try {
         await sleep(500);
-
-        if (platform === 'win32') {
-          win.webContents.print(
-            { silent: true, deviceName: printerName || '', copies: 1, color: !!color },
-            (success, reason) => {
-              if (success) finish(null, { success: true, output: `Test page sent to ${printerName || 'default'}` });
-              else finish(new Error(`Print failed: ${reason || 'unknown'}`));
-            },
-          );
-          return;
-        }
 
         const pdf = await win.webContents.printToPDF({
           printBackground: true,
@@ -327,7 +320,7 @@ function printTestPage(printerName, color = false) {
 
     timeout = setTimeout(() => {
       finish(new Error('Timeout'));
-    }, 30000);
+    }, TEST_PRINT_TIMEOUT_MS);
   });
 }
 
@@ -335,4 +328,13 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-module.exports = { getAvailablePrinters, printFile, printTestPage, isVirtualPrinter };
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+module.exports = { getAvailablePrinters, printFile, printTestPage, buildTestPageHtml, isVirtualPrinter };

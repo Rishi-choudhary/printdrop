@@ -13,13 +13,23 @@ const os = require('os');
  */
 function parsePageRange(rangeStr, totalPages) {
   if (!rangeStr || rangeStr === 'all') return null;
+  if (!Number.isInteger(totalPages) || totalPages < 1 || totalPages > 10000) {
+    throw new Error('Invalid document page count');
+  }
+  if (typeof rangeStr !== 'string' || rangeStr.length > 200) {
+    throw new Error('Invalid page range');
+  }
 
   const pages = new Set();
   for (const part of rangeStr.split(',').map((s) => s.trim())) {
+    if (!part) continue;
     if (part.includes('-')) {
-      const [s, e] = part.split('-').map(Number);
+      if (!/^\d+\s*-\s*\d+$/.test(part)) throw new Error(`Invalid page range segment: ${part}`);
+      const [s, e] = part.split('-').map((n) => Number.parseInt(n.trim(), 10));
+      if (s < 1 || e < s) throw new Error(`Invalid page range segment: ${part}`);
       for (let i = s; i <= Math.min(e, totalPages); i++) pages.add(i);
     } else {
+      if (!/^\d+$/.test(part)) throw new Error(`Invalid page range segment: ${part}`);
       const p = parseInt(part, 10);
       if (p >= 1 && p <= totalPages) pages.add(p);
     }
@@ -289,20 +299,25 @@ async function stampTokenOnFirstPage(documentPath, token) {
  * physical sheet when duplex-printed.
  *
  * position: 'back-first' — inserts the stamp page as page 2 (back of sheet 1 in duplex)
- * position: 'back-last'  — appends the stamp page at the end (with a blank page pad when
- *                           the original has an odd count, so the stamp lands on the back
- *                           of the last physical sheet in duplex)
+ * position: 'back-last'  — places the stamp on a back side at the end. Odd page
+ *                           counts receive the stamp directly; even page counts
+ *                           receive a blank front page before the stamp.
  * corner: 'bottom-left' | 'bottom-right'
+ * preserveSingleSided: adds blank backs after document pages so the PDF can be
+ *                       duplex-printed without putting document content on backs.
  *
  * Returns the path to a new temp PDF (caller must delete it).
  */
 async function addTokenBackPage(documentPath, token, options = {}) {
   const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
-  const { position = 'back-last', corner = 'bottom-right' } = options;
+  const { position = 'back-last', corner = 'bottom-right', preserveSingleSided = false } = options;
 
   const docBytes = await fs.promises.readFile(documentPath);
   const srcDoc = await PDFDocument.load(docBytes, { ignoreEncryption: true });
   const srcCount = srcDoc.getPageCount();
+  if (srcCount === 0) {
+    throw new Error('Document has no pages to stamp');
+  }
 
   const refPage = srcDoc.getPage(0);
   const { width, height } = refPage.getSize();
@@ -335,7 +350,16 @@ async function addTokenBackPage(documentPath, token, options = {}) {
   const srcPages  = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
   const [stampCopy] = await outDoc.copyPages(stampDoc, [0]);
 
-  if (position === 'back-first') {
+  if (preserveSingleSided) {
+    for (let i = 0; i < srcPages.length; i++) {
+      outDoc.addPage(srcPages[i]);
+      const shouldStamp = position === 'back-first'
+        ? i === 0
+        : i === srcPages.length - 1;
+      if (shouldStamp) outDoc.addPage(stampCopy);
+      else outDoc.addPage([width, height]);
+    }
+  } else if (position === 'back-first') {
     // [page0, stampPage, page1, page2, ...]  → stamp on back of physical sheet 1
     outDoc.addPage(srcPages[0]);
     outDoc.addPage(stampCopy);
@@ -343,8 +367,8 @@ async function addTokenBackPage(documentPath, token, options = {}) {
   } else {
     // back-last: add all original pages
     for (const p of srcPages) outDoc.addPage(p);
-    // If odd page count, add a blank so stamp lands on the back of the last sheet
-    if (srcCount % 2 !== 0) outDoc.addPage([width, height]);
+    // If even page count, add a blank front so the stamp lands on a back side.
+    if (srcCount % 2 === 0) outDoc.addPage([width, height]);
     outDoc.addPage(stampCopy);
   }
 

@@ -18,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
 const { app } = require('electron');
 const logger = require('./logger');
 
@@ -25,6 +26,8 @@ const SUMATRA_URL =
   'https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.exe';
 const SUMATRA_URL_FALLBACK =
   'https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-64.exe';
+const SUMATRA_SHA256 =
+  '290e4aa7ed64c728138711c011e89aab7aa48dbc1ae430371dc2be4100b92bf0';
 
 let _cached = null;
 let _downloading = null;
@@ -33,26 +36,31 @@ function candidates() {
   const list = [];
   // 1. Packaged resources
   if (process.resourcesPath) {
-    list.push(path.join(process.resourcesPath, 'SumatraPDF.exe'));
+    list.push({ path: path.join(process.resourcesPath, 'SumatraPDF.exe'), verifyHash: true });
   }
   // 2. Dev checkout
-  list.push(path.join(__dirname, '..', 'resources', 'win', 'SumatraPDF.exe'));
+  list.push({ path: path.join(__dirname, '..', 'resources', 'win', 'SumatraPDF.exe'), verifyHash: true });
   // 3. User data dir (where we auto-download)
   try {
-    list.push(path.join(app.getPath('userData'), 'bin', 'SumatraPDF.exe'));
+    list.push({ path: path.join(app.getPath('userData'), 'bin', 'SumatraPDF.exe'), verifyHash: true });
   } catch {
     /* app may not be ready in some test paths */
   }
   // 4. Common install locations
-  list.push('C:\\Program Files\\SumatraPDF\\SumatraPDF.exe');
-  list.push('C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe');
+  list.push({ path: 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe', verifyHash: false });
+  list.push({ path: 'C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe', verifyHash: false });
   return list;
 }
 
 function findExisting() {
-  for (const p of candidates()) {
+  for (const candidate of candidates()) {
     try {
+      const p = candidate.path;
       if (p && fs.existsSync(p) && fs.statSync(p).size > 1_000_000) {
+        if (candidate.verifyHash && sha256File(p) !== SUMATRA_SHA256) {
+          logger.warn(`[sumatra] ignoring ${p}: SHA-256 mismatch`);
+          continue;
+        }
         return p;
       }
     } catch {
@@ -60,6 +68,12 @@ function findExisting() {
     }
   }
   return null;
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash('sha256');
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest('hex');
 }
 
 function downloadTo(destPath, url) {
@@ -92,6 +106,11 @@ function downloadTo(destPath, url) {
             if (size < 1_000_000) {
               fs.unlinkSync(tmpPath);
               return reject(new Error(`Downloaded file too small (${size} bytes)`));
+            }
+            const digest = sha256File(tmpPath);
+            if (digest !== SUMATRA_SHA256) {
+              fs.unlinkSync(tmpPath);
+              return reject(new Error(`Downloaded file SHA-256 mismatch (${digest})`));
             }
             fs.renameSync(tmpPath, destPath);
             resolve(destPath);

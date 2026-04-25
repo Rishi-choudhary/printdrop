@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
+import { encodePathSegment } from '@/lib/security';
 
 export default function AdminUsersPage() {
   const [search, setSearch] = useState('');
@@ -17,7 +18,7 @@ export default function AdminUsersPage() {
 
   const changeRole = async (userId: string, role: string) => {
     try {
-      await api.patch(`/admin/users/${userId}`, { role });
+      await api.patch(`/admin/users/${encodePathSegment(userId)}`, { role });
       mutate();
       toast(`Role updated to ${role}`, 'success');
     } catch (err: any) {

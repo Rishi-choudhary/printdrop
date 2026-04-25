@@ -37,7 +37,7 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    LSUIElement: true                      # Tray-only app (no dock icon)
+    LSUIElement: true                      # Menu-bar app on macOS; click the menu-bar icon to open.
     NSPrinterUsageDescription: "PrintDrop prints customer documents to your shop printers."
   target:
     - target: dmg
@@ -85,7 +85,7 @@ nsis:
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
-  createDesktopShortcut: true
+  createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: PrintDrop Agent
   runAfterFinish: true

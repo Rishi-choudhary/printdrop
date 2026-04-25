@@ -15,6 +15,7 @@ import {
   FileText, IndianRupee, Printer, Upload, ArrowRight,
   CheckCircle, Clock, Loader2, Package, Bell,
 } from 'lucide-react';
+import { encodePathSegment, getSafePaymentUrl } from '@/lib/security';
 
 const STATUS_STEPS = [
   { key: 'payment_pending', label: 'Payment',  icon: <IndianRupee className="w-3.5 h-3.5" /> },
@@ -50,9 +51,14 @@ export default function ProfilePage() {
     prevJobStatuses.current = map;
   }, [jobsData]);
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      window.location.assign('/login');
+    }
+  }, [authLoading, user]);
+
   if (authLoading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading…</div>;
   if (!user) {
-    if (typeof window !== 'undefined') window.location.href = '/login';
     return null;
   }
 
@@ -218,6 +224,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function ActiveOrderCard({ job }: { job: any }) {
   const currentIdx = STATUS_STEPS.findIndex(s => s.key === job.status);
+  const safePaymentLink = getSafePaymentUrl(job.payment?.razorpayPaymentLink);
 
   return (
     <Card className="border-blue-200 bg-gradient-to-br from-blue-50/80 to-white overflow-hidden">
@@ -258,17 +265,17 @@ function ActiveOrderCard({ job }: { job: any }) {
         </div>
 
         {/* Pay button if pending */}
-        {job.status === 'payment_pending' && job.payment?.razorpayPaymentLink && (
+        {job.status === 'payment_pending' && safePaymentLink && (
           <a
-            href={job.payment.razorpayPaymentLink}
+            href={safePaymentLink}
             className="block w-full text-center bg-blue-600 text-white font-semibold text-sm py-2.5 rounded-xl hover:bg-blue-700 transition-colors mt-1"
           >
             Complete Payment — ₹{job.totalPrice.toFixed(0)}
           </a>
         )}
-        {job.status === 'payment_pending' && !job.payment?.razorpayPaymentLink && (
+        {job.status === 'payment_pending' && !safePaymentLink && (
           <Link
-            href={`/pay/${job.id}`}
+            href={`/pay/${encodePathSegment(job.id)}`}
             className="block w-full text-center bg-blue-600 text-white font-semibold text-sm py-2.5 rounded-xl hover:bg-blue-700 transition-colors mt-1"
           >
             Complete Payment — ₹{job.totalPrice.toFixed(0)}

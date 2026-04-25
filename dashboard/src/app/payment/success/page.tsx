@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CheckCircle, AlertCircle, Loader2, MessageCircle, Printer, Home } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { encodePathSegment, getSafeExternalUrl } from '@/lib/security';
 
 interface JobResult {
   token: number;
@@ -28,7 +29,13 @@ function PaymentSuccessContent() {
   const razorpaySignature = searchParams.get('razorpay_signature');
 
   const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
-  const telegramLink = botUsername ? `https://t.me/${botUsername}` : null;
+  const telegramLink = botUsername && /^[A-Za-z0-9_]{5,32}$/.test(botUsername)
+    ? `https://t.me/${botUsername}`
+    : null;
+  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER;
+  const whatsappLink = whatsappNumber && /^\d{8,15}$/.test(whatsappNumber)
+    ? getSafeExternalUrl(`https://wa.me/${whatsappNumber}`)
+    : null;
 
   useEffect(() => {
     if (!jobId) {
@@ -82,13 +89,13 @@ function PaymentSuccessContent() {
 
   async function pollJobStatus(id: string, attempts = 0) {
     if (attempts >= 12) {
-      setErrorMsg('Payment is taking longer than expected. Check back in Telegram for your token.');
+      setErrorMsg('Payment is processing. Your token will arrive via WhatsApp or Telegram shortly.');
       setState('error');
       return;
     }
 
     try {
-      const res = await fetch(`/api/webhooks/razorpay/job/${id}`);
+      const res = await fetch(`/api/webhooks/razorpay/job/${encodePathSegment(id)}`);
       const data = await res.json();
 
       if (res.ok && data.token && ['queued', 'printing', 'ready', 'picked_up'].includes(data.status)) {
@@ -132,14 +139,21 @@ function PaymentSuccessContent() {
             <p className="font-semibold text-gray-800">Something went wrong</p>
             <p className="text-sm text-gray-500">{errorMsg}</p>
             <div className="space-y-2 mt-2">
-              {telegramLink && (
+              {telegramLink ? (
                 <a href={telegramLink} target="_blank" rel="noopener noreferrer" className="block">
                   <Button className="w-full" variant="secondary">
                     <MessageCircle className="w-4 h-4 mr-2" />
                     Open Telegram
                   </Button>
                 </a>
-              )}
+              ) : whatsappLink ? (
+                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block">
+                  <Button className="w-full" variant="secondary">
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Open WhatsApp
+                  </Button>
+                </a>
+              ) : null}
               <Link href="/" className="block">
                 <Button className="w-full" variant="secondary">
                   <Home className="w-4 h-4 mr-2" />
@@ -189,7 +203,7 @@ function PaymentSuccessContent() {
           )}
 
           <p className="text-xs text-gray-400">
-            You&apos;ll also receive this token in Telegram when your print is ready.
+            You&apos;ll also receive this token via WhatsApp or Telegram when your print is ready.
           </p>
 
           {/* Actions */}
@@ -201,10 +215,17 @@ function PaymentSuccessContent() {
                   Back to Telegram
                 </Button>
               </a>
+            ) : whatsappLink ? (
+              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block">
+                <Button className="w-full" size="lg">
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  Back to WhatsApp
+                </Button>
+              </a>
             ) : (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <p className="text-xs text-amber-700">
-                  Open your Telegram bot to track your print status.
+                  Your token has been sent to you via WhatsApp or Telegram.
                 </p>
               </div>
             )}

@@ -1,15 +1,21 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Navbar } from '@/components/navbar';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
+  useEffect(() => {
+    if (!loading && (!user || user.role !== 'admin')) {
+      window.location.assign('/login');
+    }
+  }, [loading, user]);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   if (!user || user.role !== 'admin') {
-    if (typeof window !== 'undefined') window.location.href = '/login';
     return null;
   }
 

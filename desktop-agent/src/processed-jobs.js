@@ -44,11 +44,13 @@ function _persist() {
   const fp = getFilePath();
   const dir = path.dirname(fp);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    fp,
-    JSON.stringify({ version: 1, jobs: _jobs, lastPrunedAt: new Date().toISOString() }, null, 2),
-    'utf8',
-  );
+  const tmp = `${fp}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ version: 1, jobs: _jobs, lastPrunedAt: new Date().toISOString() }, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+  fs.renameSync(tmp, fp);
+  try { fs.chmodSync(fp, 0o600); } catch {}
 }
 
 function has(jobId) {
@@ -62,4 +64,12 @@ function add(jobId) {
   _persist(); // synchronous write — crash-safe
 }
 
-module.exports = { has, add, load };
+function remove(jobId) {
+  load();
+  if (jobId in _jobs) {
+    delete _jobs[jobId];
+    _persist();
+  }
+}
+
+module.exports = { has, add, remove, load };

@@ -8,10 +8,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
+import { getSafeExternalUrl } from '@/lib/security';
 
 /* ─── WhatsApp order CTA ────────────────────────────────────────────────── */
 function WhatsAppOrderButton() {
-  const url = process.env.NEXT_PUBLIC_WHATSAPP_ORDER_URL;
+  const url = getSafeExternalUrl(process.env.NEXT_PUBLIC_WHATSAPP_ORDER_URL);
   if (url) {
     return (
       <a href={url} target="_blank" rel="noopener noreferrer">

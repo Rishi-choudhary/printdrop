@@ -3,26 +3,27 @@
  * PrintDrop Smoke Test
  * Usage: node scripts/smoke-test.js [--base-url http://localhost:3001]
  *
- * Runs 14 sequential API tests, passing state (JWT, job IDs) between them.
+ * Runs sequential API tests, passing state (session cookie, job IDs) between them.
  * Exits 0 on full pass, 1 if any test fails.
  */
+
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const args = process.argv.slice(2);
 const baseUrlIdx = args.indexOf('--base-url');
 const BASE_URL = baseUrlIdx !== -1 ? args[baseUrlIdx + 1] : 'http://localhost:3001';
 
-// Test phone — use a non-rate-limited number for smoke tests
-const TEST_PHONE = process.env.SMOKE_TEST_PHONE || '+919876543210';
+const TEST_PHONE = process.env.SMOKE_TEST_PHONE || process.env.PRINTDROP_DEMO_SHOPKEEPER_PHONE || '+919876543210';
+const TEST_PIN = process.env.SMOKE_TEST_PIN || process.env.PRINTDROP_DEMO_SHOPKEEPER_PIN;
 
 // Shared state between tests
 const ctx = {
-  jwt: null,
-  shopkeeperJwt: null,
+  cookie: null,
   userId: null,
   shopId: null,
   jobId: null,
   paymentLink: null,
-  otp: null,
 };
 
 let passed = 0;
@@ -65,15 +66,24 @@ async function api(method, path, body, headers = {}) {
   } catch {
     data = {};
   }
-  return { status: res.status, data };
+  return { status: res.status, data, headers: res.headers };
 }
 
 function authHeader() {
-  return ctx.jwt ? { Authorization: `Bearer ${ctx.jwt}` } : {};
+  return ctx.cookie ? { Cookie: ctx.cookie } : {};
 }
 
 function shopkeeperHeader() {
-  return ctx.shopkeeperJwt ? { Authorization: `Bearer ${ctx.shopkeeperJwt}` } : {};
+  return authHeader();
+}
+
+function captureSessionCookie(headers) {
+  const setCookie =
+    typeof headers.getSetCookie === 'function'
+      ? headers.getSetCookie().join(',')
+      : headers.get('set-cookie');
+  const match = setCookie?.match(/(?:^|,\s*)pd_session=([^;]+)/);
+  return match ? `pd_session=${match[1]}` : null;
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -87,39 +97,29 @@ async function t01_health() {
   }
 }
 
-async function t02_sendOtp() {
-  const { status, data } = await api('POST', '/api/auth/send-otp', { phone: TEST_PHONE });
-  if (status === 200 && data.success) {
-    ctx.otp = data.otp; // set in dev mode only
-    ok('Send OTP', ctx.otp ? `OTP: ${ctx.otp} (dev mode)` : 'SMS queued');
-  } else if (status === 503) {
-    fail('Send OTP', 'MSG91 not configured — set MSG91_AUTH_KEY or run in dev mode');
-  } else {
-    fail('Send OTP', `Got ${status}: ${JSON.stringify(data)}`);
-  }
-}
-
-async function t03_verifyOtp() {
-  if (!ctx.otp) {
-    fail('Verify OTP', 'Skipped — no OTP available (requires dev mode or MSG91)');
+async function t02_shopkeeperLogin() {
+  if (!TEST_PIN) {
+    fail('Shopkeeper login', 'Set SMOKE_TEST_PIN or PRINTDROP_DEMO_SHOPKEEPER_PIN');
     return;
   }
-  const { status, data } = await api('POST', '/api/auth/verify-otp', {
+  const { status, data, headers } = await api('POST', '/api/auth/shopkeeper-login', {
     phone: TEST_PHONE,
-    code: ctx.otp,
+    pin: TEST_PIN,
   });
-  if (status === 200 && data.token) {
-    ctx.jwt = data.token;
+  const cookie = captureSessionCookie(headers);
+  if (status === 200 && data.user && cookie) {
+    ctx.cookie = cookie;
     ctx.userId = data.user?.id;
-    ok('Verify OTP', `userId: ${ctx.userId?.slice(0, 8)}...`);
+    ctx.shopId = data.user?.shop?.id || null;
+    ok('Shopkeeper login', `userId: ${ctx.userId?.slice(0, 8)}..., role: ${data.user.role}`);
   } else {
-    fail('Verify OTP', `Got ${status}: ${JSON.stringify(data)}`);
+    fail('Shopkeeper login', `Got ${status}: ${JSON.stringify(data)}`);
   }
 }
 
-async function t04_getProfile() {
-  if (!ctx.jwt) {
-    fail('Get profile', 'Skipped — no JWT');
+async function t03_getProfile() {
+  if (!ctx.cookie) {
+    fail('Get profile', 'Skipped — no session cookie');
     return;
   }
   const { status, data } = await api('GET', '/api/auth/me', null, authHeader());
@@ -130,20 +130,20 @@ async function t04_getProfile() {
   }
 }
 
-async function t05_listShops() {
+async function t04_listShops() {
   const { status, data } = await api('GET', '/api/shops');
   if (status === 200 && Array.isArray(data.shops || data)) {
     const shops = data.shops || data;
-    ctx.shopId = shops[0]?.id;
+    ctx.shopId = ctx.shopId || shops[0]?.id;
     ok('List shops', `found ${shops.length} shop(s)${ctx.shopId ? `, using ${shops[0]?.name}` : ''}`);
   } else {
     fail('List shops', `Got ${status}: ${JSON.stringify(data)}`);
   }
 }
 
-async function t06_uploadFile() {
-  if (!ctx.jwt) {
-    fail('Upload file', 'Skipped — no JWT');
+async function t05_uploadFile() {
+  if (!ctx.cookie) {
+    fail('Upload file', 'Skipped — no session cookie');
     return;
   }
 
@@ -171,9 +171,9 @@ async function t06_uploadFile() {
   }
 }
 
-async function t07_createJob() {
-  if (!ctx.jwt || !ctx.shopId) {
-    fail('Create job', `Skipped — need JWT (${!!ctx.jwt}) + shopId (${!!ctx.shopId})`);
+async function t06_createJob() {
+  if (!ctx.cookie || !ctx.shopId) {
+    fail('Create job', `Skipped — need session (${!!ctx.cookie}) + shopId (${!!ctx.shopId})`);
     return;
   }
 
@@ -201,9 +201,9 @@ async function t07_createJob() {
   }
 }
 
-async function t08_createPayment() {
-  if (!ctx.jwt || !ctx.jobId) {
-    fail('Create payment link', `Skipped — need JWT + jobId`);
+async function t07_createPayment() {
+  if (!ctx.cookie || !ctx.jobId) {
+    fail('Create payment link', 'Skipped — need session + jobId');
     return;
   }
   const { status, data } = await api('POST', `/api/jobs/${ctx.jobId}/pay`, undefined, authHeader());
@@ -217,7 +217,7 @@ async function t08_createPayment() {
   }
 }
 
-async function t09_publicJobStatus() {
+async function t08_publicJobStatus() {
   if (!ctx.jobId) {
     fail('Public job status', 'Skipped — no jobId');
     return;
@@ -230,7 +230,7 @@ async function t09_publicJobStatus() {
   }
 }
 
-async function t10_mockPayment() {
+async function t09_mockPayment() {
   if (!ctx.jobId) {
     fail('Mock payment', 'Skipped — no jobId');
     return;
@@ -245,35 +245,29 @@ async function t10_mockPayment() {
   }
 }
 
-async function t11_otpRateLimit() {
-  // Attempt to verify with wrong OTPs on a fresh phone to hit rate limit
+async function t10_loginRateLimit() {
   const testPhone = '+911234567890';
-
-  // First request OTP for this phone
-  await api('POST', '/api/auth/send-otp', { phone: testPhone });
-
   let hitLimit = false;
   for (let i = 0; i < 7; i++) {
-    const { status, data } = await api('POST', '/api/auth/verify-otp', {
+    const { status } = await api('POST', '/api/auth/shopkeeper-login', {
       phone: testPhone,
-      code: '000000',
+      pin: '000000',
     });
     if (status === 429) {
       hitLimit = true;
-      ok('OTP rate limit', `429 hit on attempt ${i + 1}`);
+      ok('Login rate limit', `429 hit on attempt ${i + 1}`);
       break;
     }
   }
   if (!hitLimit) {
-    fail('OTP rate limit', 'Expected 429 after 5 wrong attempts, never got it');
+    fail('Login rate limit', 'Expected 429 after 5 wrong attempts, never got it');
   }
 }
 
-async function t12_kdsQueue() {
-  // Use customer JWT if no shopkeeper JWT available
-  const header = ctx.shopkeeperJwt ? shopkeeperHeader() : authHeader();
-  if (!ctx.jwt) {
-    fail('KDS queue', 'Skipped — no JWT');
+async function t11_kdsQueue() {
+  const header = shopkeeperHeader();
+  if (!ctx.cookie) {
+    fail('KDS queue', 'Skipped — no session cookie');
     return;
   }
   const { status, data } = await api('GET', '/api/jobs?status=queued', null, header);
@@ -285,9 +279,9 @@ async function t12_kdsQueue() {
   }
 }
 
-async function t13_statusUpdate() {
-  if (!ctx.jwt || !ctx.jobId) {
-    fail('Status update', 'Skipped — no JWT or jobId');
+async function t12_statusUpdate() {
+  if (!ctx.cookie || !ctx.jobId) {
+    fail('Status update', 'Skipped — no session cookie or jobId');
     return;
   }
   const { status, data } = await api(
@@ -307,9 +301,9 @@ async function t13_statusUpdate() {
   }
 }
 
-async function t14_printerCrud() {
-  if (!ctx.jwt || !ctx.shopId) {
-    fail('Printer CRUD', 'Skipped — no JWT or shopId');
+async function t13_printerCrud() {
+  if (!ctx.cookie || !ctx.shopId) {
+    fail('Printer CRUD', 'Skipped — no session cookie or shopId');
     return;
   }
   const { status, data } = await api('GET', `/api/printers/shop/${ctx.shopId}`);
@@ -330,19 +324,18 @@ async function run() {
 
   const tests = [
     t01_health,
-    t02_sendOtp,
-    t03_verifyOtp,
-    t04_getProfile,
-    t05_listShops,
-    t06_uploadFile,
-    t07_createJob,
-    t08_createPayment,
-    t09_publicJobStatus,
-    t10_mockPayment,
-    t11_otpRateLimit,
-    t12_kdsQueue,
-    t13_statusUpdate,
-    t14_printerCrud,
+    t02_shopkeeperLogin,
+    t03_getProfile,
+    t04_listShops,
+    t05_uploadFile,
+    t06_createJob,
+    t07_createPayment,
+    t08_publicJobStatus,
+    t09_mockPayment,
+    t10_loginRateLimit,
+    t11_kdsQueue,
+    t12_statusUpdate,
+    t13_printerCrud,
   ];
 
   for (const test of tests) {

@@ -3,7 +3,7 @@ const path = require('path');
 const { app } = require('electron');
 
 const DEFAULTS = {
-  version: 1,
+  version: 2,
   agentKey: '',
   apiUrl: 'https://api.printdrop.app',
   shopId: null,
@@ -18,11 +18,12 @@ const DEFAULTS = {
   colorDuplex: 'simplex',
   coverPage: true,
   // tokenStampPosition: 'none' | 'front-top-right' | 'back-first-right' | 'back-first-left' | 'back-last-right' | 'back-last-left'
-  tokenStampPosition: 'front-top-right',
+  tokenStampPosition: 'back-last-right',
   autoPrint: false,
   soundEnabled: true,
   notificationsEnabled: true,
   autoStart: true,
+  queueHistoryDays: 30,
   pollIntervalMs: 4000,
   setupComplete: false,
 };
@@ -37,7 +38,14 @@ function load() {
   if (_config) return _config;
   try {
     const raw = fs.readFileSync(getFilePath(), 'utf8');
-    _config = { ...DEFAULTS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    _config = { ...DEFAULTS, ...parsed };
+    if ((parsed.version || 1) < 2 &&
+        _config.coverPage !== false &&
+        _config.tokenStampPosition === 'front-top-right') {
+      _config.tokenStampPosition = 'back-last-right';
+    }
+    _config.version = DEFAULTS.version;
   } catch {
     _config = { ...DEFAULTS };
   }
@@ -49,7 +57,10 @@ function save(updates = {}) {
   const fp = getFilePath();
   const dir = path.dirname(fp);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(fp, JSON.stringify(_config, null, 2), 'utf8');
+  const tmp = `${fp}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(_config, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(tmp, fp);
+  try { fs.chmodSync(fp, 0o600); } catch {}
   return _config;
 }
 

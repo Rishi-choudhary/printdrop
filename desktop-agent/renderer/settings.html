@@ -307,7 +307,7 @@
       <section class="tab" data-tab="history">
         <div class="tab-head">
           <h1>Print History</h1>
-          <p>Jobs processed by this agent since last start.</p>
+          <p>Recent jobs from the server-backed queue history.</p>
         </div>
 
         <div class="card" style="padding: 0; overflow: hidden;">
@@ -348,6 +348,12 @@
             <label class="field-label">Poll interval (seconds)</label>
             <input class="input" id="pollInterval" type="number" min="1" max="60" step="1">
             <div class="field-hint">How often the agent checks for new jobs. Default: 4s.</div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Queue history (days)</label>
+            <input class="input" id="queueHistoryDays" type="number" min="1" max="365" step="1">
+            <div class="field-hint">Completed and failed jobs stay visible in the agent history for this many days. Default: 30 days.</div>
           </div>
 
           <div class="field">

@@ -1,5 +1,7 @@
 const { authenticate } = require('../middleware/auth');
 const jobService = require('../services/job');
+const { parseInteger } = require('../utils/request');
+const { redactUserShop } = require('../services/agent-key');
 
 async function userRoutes(fastify) {
   // GET /users/me — profile with stats
@@ -21,7 +23,7 @@ async function userRoutes(fastify) {
     });
 
     return {
-      ...user,
+      ...redactUserShop(user),
       stats: {
         totalJobs: jobCount,
         totalSpent: totalSpent._sum.totalPrice || 0,
@@ -32,24 +34,35 @@ async function userRoutes(fastify) {
   // PATCH /users/me — update name/email
   fastify.patch('/me', {
     preHandler: [authenticate],
-  }, async (request) => {
-    const { name, email } = request.body;
+  }, async (request, reply) => {
+    const { name, email } = request.body || {};
     const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email;
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.length > 120) {
+        return reply.code(400).send({ error: 'Invalid name' });
+      }
+      updateData.name = name.trim();
+    }
+    if (email !== undefined) {
+      if (email !== null && (typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+        return reply.code(400).send({ error: 'Invalid email' });
+      }
+      updateData.email = email ? email.trim().toLowerCase() : null;
+    }
 
-    return fastify.prisma.user.update({
+    const user = await fastify.prisma.user.update({
       where: { id: request.user.id },
       data: updateData,
     });
+    return redactUserShop(user);
   });
 
   // GET /users/me/jobs — paginated job history
   fastify.get('/me/jobs', {
     preHandler: [authenticate],
   }, async (request) => {
-    const limit = parseInt(request.query.limit || '20');
-    const offset = parseInt(request.query.offset || '0');
+    const limit = parseInteger(request.query.limit, { defaultValue: 20, min: 1, max: 100 });
+    const offset = parseInteger(request.query.offset, { defaultValue: 0, min: 0, max: 100000 });
     return jobService.getJobsByUser(request.user.id, limit, offset);
   });
 

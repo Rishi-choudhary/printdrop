@@ -1,65 +1,27 @@
 const { PrismaClient } = require('@prisma/client');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+const { seedDemoData } = require('../scripts/lib/demo-seed');
 const prisma = new PrismaClient();
 
 async function main() {
-  // Create admin user
-  const admin = await prisma.user.upsert({
-    where: { phone: '+919999999999' },
-    update: {},
-    create: {
-      phone: '+919999999999',
-      name: 'Admin',
-      role: 'admin',
-      referralCode: 'ADMIN001',
-    },
+  const { admin, shopkeeper, shop, customer, credentials } = await seedDemoData(prisma);
+
+  console.log('Seeded demo data:', {
+    admin: { id: admin.id, phone: admin.phone, role: admin.role },
+    shopkeeper: { id: shopkeeper.id, phone: shopkeeper.phone, role: shopkeeper.role },
+    shop: { id: shop.id, phone: shop.phone, name: shop.name },
+    customer: { id: customer.id, phone: customer.phone, role: customer.role },
   });
 
-  // Create demo shopkeeper
-  const shopkeeper = await prisma.user.upsert({
-    where: { phone: '+919876543210' },
-    update: {},
-    create: {
-      phone: '+919876543210',
-      name: 'Sharma Ji',
-      role: 'shopkeeper',
-      referralCode: 'SHARMA01',
-    },
-  });
-
-  // Create demo shop
-  const shop = await prisma.shop.upsert({
-    where: { phone: '+919876543210' },
-    update: {},
-    create: {
-      name: 'Sharma Print & Xerox',
-      address: 'Shop #12, Near IIT Gate, Hauz Khas, New Delhi',
-      phone: '+919876543210',
-      ownerId: shopkeeper.id,
-      latitude: 28.5494,
-      longitude: 77.2001,
-      ratesBwSingle: 2,
-      ratesBwDouble: 1.5,
-      ratesColorSingle: 5,
-      ratesColorDouble: 4,
-      bindingCharge: 20,
-      spiralCharge: 30,
-      agentKey: 'agent_demo_key_12345',
-    },
-  });
-
-  // Create demo customer
-  const customer = await prisma.user.upsert({
-    where: { phone: '+919123456789' },
-    update: {},
-    create: {
-      phone: '+919123456789',
-      name: 'Rahul Student',
-      role: 'customer',
-      referralCode: 'RAHUL001',
-    },
-  });
-
-  console.log('Seeded:', { admin, shopkeeper, shop, customer });
+  const showCredentials = process.env.PRINTDROP_SHOW_SEED_CREDENTIALS === '1';
+  if (showCredentials) {
+    if (credentials.adminPin) console.log(`Generated admin PIN: ${credentials.adminPin}`);
+    if (credentials.shopkeeperPin) console.log(`Generated shopkeeper PIN: ${credentials.shopkeeperPin}`);
+    if (credentials.agentKey) console.log(`Generated agent key: ${credentials.agentKey}`);
+  } else if (credentials.adminPin || credentials.shopkeeperPin || credentials.agentKey) {
+    console.log('Generated demo credentials; not printing secrets. Set explicit PIN env vars to rotate demo logins if needed.');
+  }
 }
 
 main()

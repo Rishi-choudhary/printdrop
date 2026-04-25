@@ -9,8 +9,11 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const { assertPublicHttpUrl } = require('./security');
 
 const DOWNLOAD_TIMEOUT_MS = 120_000; // 2 minutes per attempt
+const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 
 function isValidUrl(u) {
   if (!u || typeof u !== 'string') return false;
@@ -27,7 +30,7 @@ async function downloadFile(fileUrl, fileName, { agentKey, apiUrl, fileKey } = {
   if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
   const safeName = path.basename(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
-  const destPath = path.join(destDir, `${Date.now()}_${safeName}`);
+  const destPath = path.join(destDir, `${Date.now()}_${crypto.randomUUID()}_${safeName}`);
 
   async function fetchWithTimeout(url, headers = {}) {
     const controller = new AbortController();
@@ -41,8 +44,12 @@ async function downloadFile(fileUrl, fileName, { agentKey, apiUrl, fileKey } = {
 
   function headersFor(url) {
     // Only add auth for calls to our own API server, not R2 CDN
-    if (apiUrl && url.startsWith(apiUrl)) {
-      return { Authorization: `Bearer ${agentKey}` };
+    try {
+      if (apiUrl && new URL(url).origin === new URL(apiUrl).origin) {
+        return { Authorization: `Bearer ${agentKey}` };
+      }
+    } catch {
+      return {};
     }
     return {};
   }
@@ -62,6 +69,10 @@ async function downloadFile(fileUrl, fileName, { agentKey, apiUrl, fileKey } = {
     if (!isValidUrl(freshUrl)) {
       throw new Error('Presign returned invalid URL');
     }
+    await assertPublicHttpUrl(freshUrl, {
+      allowHttp: process.env.NODE_ENV === 'development',
+      allowPrivate: process.env.NODE_ENV === 'development',
+    });
     return freshUrl;
   }
 
@@ -75,6 +86,10 @@ async function downloadFile(fileUrl, fileName, { agentKey, apiUrl, fileKey } = {
     const fresh = await refreshViaPresign();
     res = await fetchWithTimeout(fresh, headersFor(fresh));
   } else {
+    await assertPublicHttpUrl(fileUrl, {
+      allowHttp: process.env.NODE_ENV === 'development',
+      allowPrivate: process.env.NODE_ENV === 'development',
+    });
     res = await fetchWithTimeout(fileUrl, headersFor(fileUrl));
 
     // Presigned URL expired — refresh it
@@ -88,11 +103,34 @@ async function downloadFile(fileUrl, fileName, { agentKey, apiUrl, fileKey } = {
     throw new Error(`Download failed: HTTP ${res.status}`);
   }
 
-  const buffer = Buffer.from(await res.arrayBuffer());
-  if (buffer.length === 0) {
-    throw new Error('Downloaded file is empty (0 bytes)');
+  const contentLength = Number.parseInt(res.headers.get('content-length') || '0', 10);
+  if (contentLength > MAX_DOWNLOAD_BYTES) {
+    throw new Error(`Downloaded file is too large (${contentLength} bytes)`);
   }
-  fs.writeFileSync(destPath, buffer);
+
+  const tmpPath = `${destPath}.part`;
+  let bytes = 0;
+  const out = fs.createWriteStream(tmpPath, { flags: 'wx' });
+  try {
+    for await (const chunk of res.body) {
+      bytes += chunk.length;
+      if (bytes > MAX_DOWNLOAD_BYTES) {
+        throw new Error(`Downloaded file exceeds ${MAX_DOWNLOAD_BYTES} bytes`);
+      }
+      if (!out.write(chunk)) {
+        await new Promise((resolve) => out.once('drain', resolve));
+      }
+    }
+    await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
+    if (bytes === 0) {
+      throw new Error('Downloaded file is empty (0 bytes)');
+    }
+    fs.renameSync(tmpPath, destPath);
+  } catch (err) {
+    try { out.destroy(); } catch {}
+    try { fs.unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
   return destPath;
 }
 

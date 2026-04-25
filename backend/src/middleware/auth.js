@@ -1,28 +1,34 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
+const { getAuthTokenFromRequest } = require('../services/session-cookie');
+const { findShopByAgentKey, redactAgentKeyFields, redactUserShop } = require('../services/agent-key');
 
 /**
- * Fastify preHandler hook that verifies JWT from the Authorization header.
+ * Fastify preHandler hook that verifies JWT from the HttpOnly session cookie
+ * or agent keys from the Authorization header.
  * Attaches the full user object (with shop relation) to request.user.
  */
 async function authenticate(request, reply) {
-  const authHeader = request.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return reply.status(401).send({ error: 'Missing or invalid authorization header' });
+  const { token, source } = getAuthTokenFromRequest(request);
+  if (!token) {
+    return reply.status(401).send({ error: 'Missing or invalid authentication' });
   }
 
-  const token = authHeader.slice(7);
+  // Agent keys stay header-only so a browser cookie cannot be confused with an
+  // agent credential.
+  if (source === 'authorization') {
+    const shop = await findShopByAgentKey(request.server.prisma, token, {
+      include: { owner: { include: { shop: true } } },
+    });
 
-  // Try agent key auth first (for print-agent)
-  const shop = await request.server.prisma.shop.findUnique({
-    where: { agentKey: token },
-    include: { owner: { include: { shop: true } } },
-  });
-
-  if (shop) {
-    // Agent key auth — treat as the shop owner (shopkeeper role)
-    request.user = { ...shop.owner, shop, role: 'shopkeeper' };
-    return;
+    if (shop) {
+      request.user = redactUserShop({
+        ...shop.owner,
+        shop: redactAgentKeyFields(shop),
+        role: 'shopkeeper',
+      });
+      return;
+    }
   }
 
   // Standard JWT auth
@@ -42,7 +48,7 @@ async function authenticate(request, reply) {
     return reply.status(401).send({ error: 'User not found' });
   }
 
-  request.user = user;
+  request.user = redactUserShop(user);
 }
 
 /**

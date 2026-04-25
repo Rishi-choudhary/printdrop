@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAdminJobs } from '@/lib/hooks';
 import { api } from '@/lib/api';
+import { encodePathSegment, getSafeHref } from '@/lib/security';
 import {
   History, Search, ChevronLeft, ChevronRight,
   FileText, CheckCircle, XCircle, IndianRupee, RefreshCw,
@@ -53,7 +54,7 @@ export default function AdminJobsPage() {
     : jobs;
 
   const forceStatus = async (jobId: string, status: string) => {
-    await api.patch(`/jobs/${jobId}/status`, { status });
+    await api.patch(`/jobs/${encodePathSegment(jobId)}/status`, { status });
     mutate();
   };
 
@@ -129,16 +130,25 @@ export default function AdminJobsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((job: any) => (
+                filtered.map((job: any) => {
+                  const safeFileUrl = getSafeHref(job.fileUrl);
+
+                  return (
                   <tr key={job.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 font-black font-mono text-gray-800">
                       #{String(job.token).padStart(3, '0')}
                     </td>
                     <td className="px-4 py-3 max-w-[140px]">
-                      <a href={job.fileUrl} target="_blank" rel="noopener"
-                        className="flex items-center gap-1 text-blue-600 hover:underline text-xs truncate" title={job.fileName}>
-                        <FileText className="w-3 h-3 shrink-0" />{job.fileName}
-                      </a>
+                      {safeFileUrl ? (
+                        <a href={safeFileUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-blue-600 hover:underline text-xs truncate" title={job.fileName}>
+                          <FileText className="w-3 h-3 shrink-0" />{job.fileName}
+                        </a>
+                      ) : (
+                        <span className="flex items-center gap-1 text-gray-500 text-xs truncate" title={job.fileName}>
+                          <FileText className="w-3 h-3 shrink-0" />{job.fileName}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500">{job.user?.name || job.user?.phone || '—'}</td>
                     <td className="px-4 py-3 text-xs text-gray-500">{job.shop?.name || '—'}</td>
@@ -176,7 +186,8 @@ export default function AdminJobsPage() {
                       )}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

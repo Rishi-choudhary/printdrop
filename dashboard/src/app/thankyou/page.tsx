@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { CheckCircle, AlertCircle, Loader2, MessageCircle, Printer } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { encodePathSegment, getSafeExternalUrl } from '@/lib/security';
 
 interface JobResult {
   token: number;
@@ -27,7 +28,13 @@ function ThankYouContent() {
   const razorpaySignature = searchParams.get('razorpay_signature');
 
   const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
-  const telegramLink = botUsername ? `https://t.me/${botUsername}` : null;
+  const telegramLink = botUsername && /^[A-Za-z0-9_]{5,32}$/.test(botUsername)
+    ? `https://t.me/${botUsername}`
+    : null;
+  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER; // e.g. "918291234567"
+  const whatsappLink = whatsappNumber && /^\d{8,15}$/.test(whatsappNumber)
+    ? getSafeExternalUrl(`https://wa.me/${whatsappNumber}`)
+    : null;
 
   useEffect(() => {
     if (!jobId) {
@@ -81,13 +88,13 @@ function ThankYouContent() {
 
   async function pollJobStatus(id: string, attempts = 0) {
     if (attempts >= 12) {
-      setErrorMsg('Payment is processing. Your token will arrive in Telegram shortly.');
+      setErrorMsg('Payment is processing. Your token will arrive via WhatsApp or Telegram shortly.');
       setState('error');
       return;
     }
 
     try {
-      const res = await fetch(`/api/webhooks/razorpay/job/${id}`);
+      const res = await fetch(`/api/webhooks/razorpay/job/${encodePathSegment(id)}`);
       const data = await res.json();
 
       if (res.ok && data.token && ['queued', 'printing', 'ready', 'picked_up'].includes(data.status)) {
@@ -130,14 +137,21 @@ function ThankYouContent() {
             <AlertCircle className="w-12 h-12 text-amber-400 mx-auto" />
             <p className="font-semibold text-gray-800">Almost there!</p>
             <p className="text-sm text-gray-500">{errorMsg}</p>
-            {telegramLink && (
+            {telegramLink ? (
               <a href={telegramLink} target="_blank" rel="noopener noreferrer" className="block mt-2">
                 <Button className="w-full" size="lg">
                   <MessageCircle className="w-5 h-5 mr-2" />
                   Open Telegram
                 </Button>
               </a>
-            )}
+            ) : whatsappLink ? (
+              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block mt-2">
+                <Button className="w-full" size="lg">
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  Open WhatsApp
+                </Button>
+              </a>
+            ) : null}
           </CardBody>
         </Card>
       </div>
@@ -176,7 +190,7 @@ function ThankYouContent() {
           )}
 
           <p className="text-xs text-gray-400">
-            Your token has also been sent to you in Telegram.
+            Your token has also been sent to you via WhatsApp or Telegram.
           </p>
 
           {telegramLink ? (
@@ -186,10 +200,17 @@ function ThankYouContent() {
                 Back to Telegram
               </Button>
             </a>
+          ) : whatsappLink ? (
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="block">
+              <Button className="w-full" size="lg">
+                <MessageCircle className="w-5 h-5 mr-2" />
+                Back to WhatsApp
+              </Button>
+            </a>
           ) : (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
               <p className="text-xs text-amber-700">
-                Open your Telegram bot to track your print status.
+                Your token has been sent to you via WhatsApp or Telegram.
               </p>
             </div>
           )}

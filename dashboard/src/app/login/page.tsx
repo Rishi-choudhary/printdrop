@@ -6,6 +6,7 @@ import { Printer, ArrowLeft, Loader2, Phone, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
+import { getSafeExternalUrl } from '@/lib/security';
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -14,14 +15,18 @@ export default function LoginPage() {
   const [pin, setPin]       = useState('');
   const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
+  const whatsappOrderUrl = getSafeExternalUrl(process.env.NEXT_PUBLIC_WHATSAPP_ORDER_URL);
 
   const phoneRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { phoneRef.current?.focus(); }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    router.replace(user.role === 'admin' ? '/admin' : '/dashboard');
+  }, [router, user]);
+
   if (user) {
-    const dest = user.role === 'admin' ? '/admin' : '/dashboard';
-    router.push(dest);
     return null;
   }
 
@@ -42,7 +47,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(`+91${rawDigits}`, pin);
-      window.location.href = '/';
+      window.location.assign('/');
     } catch (err: any) {
       setError(err.message || 'Invalid phone number or PIN');
     } finally {
@@ -151,7 +156,9 @@ export default function LoginPage() {
           <p className="text-xs text-center text-muted-foreground">
             Not a shop partner?{' '}
             <a
-              href={process.env.NEXT_PUBLIC_WHATSAPP_ORDER_URL || '#'}
+              href={whatsappOrderUrl || '#'}
+              target={whatsappOrderUrl ? '_blank' : undefined}
+              rel={whatsappOrderUrl ? 'noopener noreferrer' : undefined}
               className="underline underline-offset-2 hover:text-foreground transition-colors"
             >
               Order via WhatsApp

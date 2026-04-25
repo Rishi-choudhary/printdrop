@@ -72,7 +72,7 @@ function applyConfig() {
 
   // Preferences — token stamp position (with backwards compat for old coverPage bool)
   const savedPos = _config.tokenStampPosition ||
-    (_config.coverPage ? 'front-top-right' : 'none');
+    (_config.coverPage ? 'back-last-right' : 'none');
   document.getElementById('tokenStampPosition').value = savedPos;
   document.getElementById('prefSounds').checked = _config.soundEnabled !== false;
   document.getElementById('prefAutoStart').checked = _config.autoStart !== false;
@@ -80,6 +80,7 @@ function applyConfig() {
 
   // Advanced
   document.getElementById('pollInterval').value = Math.round((_config.pollIntervalMs || 4000) / 1000);
+  document.getElementById('queueHistoryDays').value = _config.queueHistoryDays || 30;
   document.getElementById('simulateMode').checked = !!_config.simulateMode;
 }
 
@@ -333,9 +334,10 @@ function wireAdvanced() {
     const pollS = parseInt(document.getElementById('pollInterval').value, 10) || 4;
     await window.printdrop.updateConfig({
       pollIntervalMs: Math.max(1000, pollS * 1000),
+      queueHistoryDays: Math.min(Math.max(parseInt(document.getElementById('queueHistoryDays').value, 10) || 30, 1), 365),
       simulateMode: document.getElementById('simulateMode').checked,
     });
-    alert('Saved. Restart the agent for poll interval changes to take effect.');
+    alert('Saved. Restart the agent for polling/history window changes to take effect.');
   });
 
   document.getElementById('openLogsBtn').addEventListener('click', () => window.printdrop.openLog());

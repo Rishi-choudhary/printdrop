@@ -9,6 +9,7 @@ const {
   Notification,
   shell,
   nativeImage,
+  screen,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -26,6 +27,13 @@ const config = require('./src/config');
 const agent = require('./src/agent');
 const updater = require('./src/updater');
 const { playSound } = require('./src/sounds');
+const {
+  normalizeApiUrl,
+  pickAllowed,
+  sanitizeJobId,
+  toBoolean,
+  toSafeString,
+} = require('./src/security');
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 const PRELOAD = path.join(__dirname, 'preload.js');
@@ -36,6 +44,11 @@ const PRELOAD = path.join(__dirname, 'preload.js');
 // menu-bar theme); on Windows/Linux we render the full-color brand mark.
 
 const IS_MAC = process.platform === 'darwin';
+const IS_WINDOWS = process.platform === 'win32';
+
+if (IS_WINDOWS) {
+  app.setAppUserModelId('app.printdrop.agent');
+}
 
 function renderTraySvg(state) {
   // Template icons on macOS must be black on transparent. The OS applies the
@@ -142,6 +155,7 @@ app.whenReady().then(async () => {
     openSetupWindow();
   } else {
     startAgent(cfg);
+    if (IS_WINDOWS) showDashboard();
   }
 
   updater.init({ onReady: () => rebuildTrayMenu() });
@@ -273,9 +287,13 @@ function openSetupWindow() {
       preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
 
+  hardenWebContents(setupWin);
   setupWin.loadFile(path.join(__dirname, 'renderer', 'setup.html'));
   setupWin.once('ready-to-show', () => setupWin.show());
   setupWin.on('closed', () => { setupWin = null; });
@@ -309,9 +327,13 @@ function openSettingsWindow() {
       preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
 
+  hardenWebContents(settingsWin);
   settingsWin.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
   settingsWin.once('ready-to-show', () => settingsWin.show());
   settingsWin.on('closed', () => { settingsWin = null; });
@@ -321,29 +343,44 @@ function openSettingsWindow() {
 // ── Dashboard window ──────────────────────────────────────────────────────────
 
 function createDashboardWindow() {
+  const windowSize = IS_MAC
+    ? { width: 560, height: 720 }
+    : { width: 500, height: 680 };
+
   dashboardWin = new BrowserWindow({
-    width: 420,
-    height: 580,
+    width: windowSize.width,
+    height: windowSize.height,
     resizable: false,
     frame: false,
-    transparent: true,
-    skipTaskbar: true,
-    alwaysOnTop: true,
+    transparent: IS_MAC,
+    skipTaskbar: IS_MAC,
+    alwaysOnTop: IS_MAC,
     show: false,
-    backgroundColor: '#00000000',
+    backgroundColor: IS_MAC ? '#00000000' : '#f6f7fb',
     icon: ICONS.app,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
 
+  hardenWebContents(dashboardWin);
   dashboardWin.loadFile(path.join(__dirname, 'renderer', 'dashboard.html'));
   dashboardWin.on('blur', () => {
-    if (!dashboardPinned && dashboardWin && !dashboardWin.isDestroyed()) dashboardWin.hide();
+    if (IS_MAC && !dashboardPinned && dashboardWin && !dashboardWin.isDestroyed()) dashboardWin.hide();
   });
   dashboardWin.on('closed', () => { dashboardWin = null; });
+}
+
+function hardenWebContents(win) {
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event) => {
+    event.preventDefault();
+  });
 }
 
 function showDashboard() {
@@ -352,10 +389,17 @@ function showDashboard() {
   const bounds = tray?.getBounds();
   if (bounds) {
     const winBounds = dashboardWin.getBounds();
-    const x = Math.round(bounds.x + bounds.width / 2 - winBounds.width / 2);
-    const y = process.platform === 'darwin'
+    const display = screen.getDisplayNearestPoint({
+      x: Math.round(bounds.x + bounds.width / 2),
+      y: Math.round(bounds.y + bounds.height / 2),
+    });
+    const workArea = display.workArea;
+    const rawX = Math.round(bounds.x + bounds.width / 2 - winBounds.width / 2);
+    const rawY = process.platform === 'darwin'
       ? bounds.y + bounds.height + 4
       : bounds.y - winBounds.height - 4;
+    const x = clamp(rawX, workArea.x + 8, workArea.x + workArea.width - winBounds.width - 8);
+    const y = clamp(rawY, workArea.y + 8, workArea.y + workArea.height - winBounds.height - 8);
     dashboardWin.setPosition(x, Math.max(0, y));
   }
 
@@ -426,6 +470,12 @@ function startAgent(cfg) {
   });
 }
 
+function restartAgent() {
+  try { agent.stop?.(); } catch {}
+  agentStarted = false;
+  return startAgent(config.load());
+}
+
 // ── Notifications ─────────────────────────────────────────────────────────────
 
 function notify(title, body) {
@@ -433,7 +483,9 @@ function notify(title, body) {
   const iconPath = path.join(__dirname, 'assets', 'icons', 'icon.png');
   const opts = { title, body, silent: true };
   if (fs.existsSync(iconPath)) opts.icon = iconPath;
-  new Notification(opts).show();
+  const notification = new Notification(opts);
+  notification.on('click', () => showDashboard());
+  notification.show();
 }
 
 // ── Auto-launch ───────────────────────────────────────────────────────────────
@@ -459,12 +511,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle('wizard:validate-key', async (_e, { agentKey, apiUrl }) => {
     try {
-      const url = `${apiUrl}/api/printers/heartbeat`;
+      const cleanApiUrl = normalizeApiUrl(apiUrl);
+      const cleanAgentKey = toSafeString(agentKey, 512);
+      if (!cleanAgentKey) return { ok: false, error: 'Agent key is required.' };
+      const url = `${cleanApiUrl}/api/printers/heartbeat`;
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${agentKey}`,
+          Authorization: `Bearer ${cleanAgentKey}`,
         },
         body: JSON.stringify({ printers: [] }),
       });
@@ -499,7 +554,7 @@ function registerIpcHandlers() {
   ipcMain.handle('wizard:test-print', async (_e, { printerName, color }) => {
     try {
       const { printTestPage } = require('./src/printer');
-      const result = await printTestPage(printerName, color);
+      const result = await printTestPage(toSafeString(printerName, 256), toBoolean(color));
       return { ok: true, output: result.output };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -507,10 +562,11 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('wizard:save-config', async (_e, cfg) => {
-    config.save({ ...cfg, setupComplete: true });
+    const cleanCfg = sanitizeConfigUpdate(cfg, { requireConnection: true });
+    config.save({ ...cleanCfg, setupComplete: true });
 
-    if (cfg.autoStart !== undefined) {
-      await setAutoStart(cfg.autoStart).catch(() => {});
+    if (cleanCfg.autoStart !== undefined) {
+      await setAutoStart(cleanCfg.autoStart).catch(() => {});
     }
 
     rebuildTrayMenu();
@@ -533,7 +589,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('dashboard:get-history', () => {
     const state = agent.getState();
-    return { jobs: state.recentJobs || [] };
+    return { jobs: buildHistoryJobs(state) };
   });
 
   ipcMain.handle('dashboard:toggle-pin', () => {
@@ -546,7 +602,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('dashboard:print-job', async (_e, { jobId }) => {
     try {
-      await agent.manualPrint(jobId);
+      await agent.manualPrint(sanitizeJobId(jobId));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -555,7 +611,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('dashboard:pickup-job', async (_e, { jobId }) => {
     try {
-      await agent.markPickedUp(jobId);
+      await agent.markPickedUp(sanitizeJobId(jobId));
       broadcastDashboard();
       return { ok: true };
     } catch (err) {
@@ -565,7 +621,27 @@ function registerIpcHandlers() {
 
   ipcMain.handle('dashboard:cancel-job', async (_e, { jobId }) => {
     try {
-      await agent.cancelJob(jobId);
+      await agent.cancelJob(sanitizeJobId(jobId));
+      broadcastDashboard();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('dashboard:retry-job', async (_e, { jobId }) => {
+    try {
+      await agent.retryJob(sanitizeJobId(jobId));
+      broadcastDashboard();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('dashboard:force-retry-print', async (_e, { jobId }) => {
+    try {
+      await agent.forceRetryPrint(sanitizeJobId(jobId));
       broadcastDashboard();
       return { ok: true };
     } catch (err) {
@@ -575,7 +651,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('dashboard:set-mode', async (_e, { autoPrint }) => {
     try {
-      await agent.setMode(autoPrint);
+      await agent.setMode(toBoolean(autoPrint));
       broadcastDashboard();
       return { ok: true };
     } catch (err) {
@@ -592,11 +668,13 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('settings:update-config', async (_e, updates) => {
+    const cleanUpdates = sanitizeConfigUpdate(updates);
     // If autoStart is being toggled, sync with OS
-    if (Object.prototype.hasOwnProperty.call(updates, 'autoStart')) {
-      await setAutoStart(updates.autoStart).catch(() => {});
+    if (Object.prototype.hasOwnProperty.call(cleanUpdates, 'autoStart')) {
+      await setAutoStart(cleanUpdates.autoStart).catch(() => {});
     }
-    config.save(updates);
+    config.save(cleanUpdates);
+    if (agentStarted && shouldRestartAgent(cleanUpdates)) await restartAgent();
     rebuildTrayMenu();
     broadcastDashboard();
     return { ok: true };
@@ -661,9 +739,20 @@ function registerIpcHandlers() {
   ipcMain.handle('app:open-settings', () => openSettingsWindow());
 
   ipcMain.handle('app:open-external', (_e, { url }) => {
-    // Only allow http/https
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
-    return shell.openExternal(url);
+    const allowed = new Set([
+      'https://printdrop.app/',
+      'https://printdrop.app/help',
+      'https://printdrop.app/changelog',
+    ]);
+    let parsed;
+    try {
+      parsed = new URL(toSafeString(url, 512));
+      parsed.hash = '';
+    } catch {
+      return;
+    }
+    if (!allowed.has(parsed.toString())) return;
+    return shell.openExternal(parsed.toString());
   });
 
   ipcMain.handle('app:quit', () => app.quit());
@@ -672,4 +761,90 @@ function registerIpcHandlers() {
     await setAutoStart(enabled);
     return { ok: true };
   });
+}
+
+function sanitizeConfigUpdate(input, { requireConnection = false } = {}) {
+  const schema = {
+    agentKey: { type: 'string', maxLength: 512, required: requireConnection },
+    apiUrl: { type: 'string', maxLength: 512, required: requireConnection },
+    shopId: { type: 'nullableString', maxLength: 128 },
+    shopName: { type: 'nullableString', maxLength: 256 },
+    bwPrinterSystemName: { type: 'nullableString', maxLength: 256 },
+    bwPrinterDisplayName: { type: 'nullableString', maxLength: 256 },
+    colorPrinterSystemName: { type: 'nullableString', maxLength: 256 },
+    colorPrinterDisplayName: { type: 'nullableString', maxLength: 256 },
+    bwPaperSize: { type: 'enum', values: ['A4', 'A3', 'Letter', 'Legal'], default: 'A4' },
+    colorPaperSize: { type: 'enum', values: ['A4', 'A3', 'Letter', 'Legal'], default: 'A4' },
+    bwDuplex: { type: 'enum', values: ['simplex', 'duplex', 'duplex-long', 'duplex-short'], default: 'simplex' },
+    colorDuplex: { type: 'enum', values: ['simplex', 'duplex', 'duplex-long', 'duplex-short'], default: 'simplex' },
+    tokenStampPosition: {
+      type: 'enum',
+      values: ['none', 'front-top-right', 'back-first-right', 'back-first-left', 'back-last-right', 'back-last-left'],
+      default: 'back-last-right',
+    },
+    coverPage: { type: 'boolean', default: true },
+    autoPrint: { type: 'boolean', default: false },
+    soundEnabled: { type: 'boolean', default: true },
+    notificationsEnabled: { type: 'boolean', default: true },
+    autoStart: { type: 'boolean', default: true },
+    simulateMode: { type: 'boolean', default: false },
+    queueHistoryDays: { type: 'integer', min: 1, max: 365, default: 30 },
+    pollIntervalMs: { type: 'integer', min: 1000, max: 300000, default: 4000 },
+  };
+
+  const clean = pickAllowed(input, schema);
+  if (Object.prototype.hasOwnProperty.call(clean, 'apiUrl')) {
+    clean.apiUrl = normalizeApiUrl(clean.apiUrl);
+  }
+  return clean;
+}
+
+function shouldRestartAgent(updates) {
+  return [
+    'agentKey',
+    'apiUrl',
+    'bwPrinterSystemName',
+    'colorPrinterSystemName',
+    'bwPaperSize',
+    'colorPaperSize',
+    'bwDuplex',
+    'colorDuplex',
+    'tokenStampPosition',
+    'coverPage',
+    'queueHistoryDays',
+    'pollIntervalMs',
+    'simulateMode',
+  ].some((key) => Object.prototype.hasOwnProperty.call(updates, key));
+}
+
+function buildHistoryJobs(state) {
+  const historyStatuses = new Set(['ready', 'picked_up', 'cancelled']);
+  const jobsById = new Map();
+
+  for (const job of state.serverQueue || []) {
+    const effectiveStatus = job._localStatus || job.status;
+    if (historyStatuses.has(job.status) || String(effectiveStatus).startsWith('sync_pending')) {
+      jobsById.set(job.id, job);
+    }
+  }
+
+  for (const job of state.recentJobs || []) {
+    if (!jobsById.has(job.id)) jobsById.set(job.id, job);
+  }
+
+  return Array.from(jobsById.values()).sort((a, b) => {
+    const aTime = historyTimestamp(a);
+    const bTime = historyTimestamp(b);
+    return bTime - aTime;
+  });
+}
+
+function historyTimestamp(job) {
+  const value = job.processedAt || job.updatedAt || job.pickedUpAt || job.readyAt || job.printedAt || job.createdAt;
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }

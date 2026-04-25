@@ -2,12 +2,10 @@ const Fastify = require('fastify');
 const cors = require('@fastify/cors');
 const multipart = require('@fastify/multipart');
 const fastifyStatic = require('@fastify/static');
-const { PrismaClient } = require('@prisma/client');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
-
-const prisma = new PrismaClient();
+const prisma = require('./services/prisma');
 
 async function buildServer() {
   const fastify = Fastify({
@@ -25,18 +23,27 @@ async function buildServer() {
   });
 
   // Register CORS — allow frontend origin and support preflight for file uploads
-  const allowedOrigins = [
+  const allowedOrigins = new Set([
     config.frontendUrl,
-    'http://localhost:3000',
-    'http://localhost:3001',
     'https://printdrop.app',
     'https://www.printdrop.app',
-  ];
+  ].filter(Boolean));
+  if (config.isDev) {
+    allowedOrigins.add('http://localhost:3000');
+    allowedOrigins.add('http://localhost:3001');
+  }
   await fastify.register(cors, {
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin) || origin.endsWith('.railway.app') || origin.endsWith('.vercel.app')) {
-        return cb(null, true);
+      try {
+        const parsed = new URL(origin);
+        const isLocalDev = config.isDev && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+
+        if (allowedOrigins.has(origin) || isLocalDev) {
+          return cb(null, true);
+        }
+      } catch {
+        return cb(new Error('Not allowed by CORS'), false);
       }
       cb(new Error('Not allowed by CORS'), false);
     },
@@ -50,6 +57,19 @@ async function buildServer() {
     limits: {
       fileSize: config.upload.maxFileSizeMb * 1024 * 1024,
     },
+  });
+
+  // Capture raw body for routes that need it (e.g. Razorpay webhook HMAC verification).
+  // Fastify v4 has no built-in rawBody option, so we override the JSON content-type
+  // parser to also stash the original buffer on request.rawBody.
+  fastify.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    try {
+      req.rawBody = body.toString('utf8');
+      done(null, JSON.parse(req.rawBody));
+    } catch (err) {
+      err.statusCode = 400;
+      done(err, undefined);
+    }
   });
 
   // Ensure uploads directory exists
@@ -80,8 +100,17 @@ async function buildServer() {
     api.register(require('./routes/agent'),    { prefix: '/agent' });
   }, { prefix: '/api' });
 
-  // Health check
-  fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
+  // Health check — includes WhatsApp webhook staleness indicator.
+  // Set up an uptime monitor (UptimeRobot, BetterUptime) to alert on
+  // whatsAppWebhookStale: true after business hours — means Gupshup stopped delivering.
+  fastify.get('/health', async () => {
+    const { getWebhookHealth } = require('./routes/webhooks');
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      ...getWebhookHealth(),
+    };
+  });
 
   return fastify;
 }
@@ -113,6 +142,10 @@ function validateConfig() {
       console.error('  Generate one with: openssl rand -base64 48\n');
       process.exit(1);
     }
+    if (config.storage.driver !== 'r2') {
+      console.error('\n  FATAL: STORAGE_DRIVER must be "r2" in production so uploaded files are not served from the API host.\n');
+      process.exit(1);
+    }
   }
 
   if (warnings.length > 0) {
@@ -132,10 +165,8 @@ async function start() {
   const fastify = await buildServer();
 
   try {
-    await fastify.listen({ port: config.port, host: config.host });
-    fastify.log.info(`PrintDrop API running on ${config.host}:${config.port}`);
-
-    // Start Telegram bot (optional — WhatsApp via Gupshup is the primary channel)
+    // Register Telegram webhook route before listen(); Fastify does not allow
+    // new routes after the server has started.
     if (config.telegram.botToken) {
       try {
         const { startTelegramBot } = require('./bot/telegram');
@@ -146,10 +177,18 @@ async function start() {
       }
     }
 
+    await fastify.listen({ port: config.port, host: config.host });
+    fastify.log.info(`PrintDrop API running on ${config.host}:${config.port}`);
+
     // WhatsApp (Gupshup) is purely webhook-driven — no polling required.
     // Ensure WHATSAPP_API_KEY and GUPSHUP_SOURCE_NUMBER are set in .env.
     if (config.whatsapp.apiKey && config.whatsapp.sourceNumber) {
       fastify.log.info(`WhatsApp (Gupshup) ready — webhook: POST /api/webhooks/whatsapp`);
+    }
+    // Warn when experimental v2 bot is active
+    const { isEnabled: isBotV2Enabled } = require('./bot/v2');
+    if (isBotV2Enabled()) {
+      fastify.log.warn('BOT_V2=1 — experimental in-memory bot is active. Sessions lost on restart. Not for production use without thorough testing.');
     }
     // Graceful shutdown — stop Telegram bot polling before exit
     const shutdown = async (signal) => {

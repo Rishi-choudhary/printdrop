@@ -1,7 +1,11 @@
-const crypto = require('crypto');
 const { authenticate, requireRole } = require('../middleware/auth');
 const shopService = require('../services/shop');
 const jobService = require('../services/job');
+const {
+  generateAgentKey,
+  hashAgentKey,
+  redactAgentKeyFields,
+} = require('../services/agent-key');
 
 async function shopRoutes(fastify) {
   // GET /shops — list active shops (public)
@@ -24,7 +28,7 @@ async function shopRoutes(fastify) {
   fastify.get('/:id', async (request, reply) => {
     const shop = await shopService.getShopById(request.params.id);
     if (!shop) return reply.code(404).send({ error: 'Shop not found' });
-    return shop;
+    return redactAgentKeyFields(shop);
   });
 
   // POST /shops — create shop (admin only)
@@ -47,7 +51,7 @@ async function shopRoutes(fastify) {
       name, address, phone, latitude, longitude, ownerId,
     });
 
-    return reply.code(201).send(shop);
+    return reply.code(201).send(redactAgentKeyFields(shop));
   });
 
   // POST /shops/register — self-service shop registration (any authenticated user)
@@ -69,7 +73,7 @@ async function shopRoutes(fastify) {
     }
 
     // Create shop and promote user to shopkeeper
-    const agentKey = `agent_${crypto.randomBytes(20).toString('hex')}`;
+    const agentKey = generateAgentKey();
 
     const shop = await fastify.prisma.$transaction(async (tx) => {
       const newShop = await tx.shop.create({
@@ -78,7 +82,7 @@ async function shopRoutes(fastify) {
           address: address || '',
           phone: phone || request.user.phone,
           ownerId: request.user.id,
-          agentKey,
+          agentKeyHash: hashAgentKey(agentKey),
         },
         include: { owner: { select: { id: true, name: true, phone: true } } },
       });
@@ -91,7 +95,7 @@ async function shopRoutes(fastify) {
       return newShop;
     });
 
-    return reply.code(201).send({ shop, agentKey });
+    return reply.code(201).send({ shop: redactAgentKeyFields(shop), agentKey });
   });
 
   // POST /shops/:id/test-print — send a test print job (shopkeeper or admin)
@@ -163,7 +167,7 @@ async function shopRoutes(fastify) {
     }
 
     const updated = await shopService.updateShop(request.params.id, updateData);
-    return updated;
+    return redactAgentKeyFields(updated);
   });
 
   // PATCH /shops/:id/rates — update pricing (owner or admin)
@@ -178,7 +182,7 @@ async function shopRoutes(fastify) {
     }
 
     const updated = await shopService.updateShopRates(request.params.id, request.body);
-    return updated;
+    return redactAgentKeyFields(updated);
   });
 
   // POST /shops/:id/agent-key — generate (or regenerate) the agent key
@@ -192,10 +196,10 @@ async function shopRoutes(fastify) {
       return reply.code(403).send({ error: 'Not authorized' });
     }
 
-    const newKey = `agent_${crypto.randomBytes(20).toString('hex')}`;
+    const newKey = generateAgentKey();
     await fastify.prisma.shop.update({
       where: { id: shop.id },
-      data: { agentKey: newKey },
+      data: { agentKey: null, agentKeyHash: hashAgentKey(newKey) },
     });
 
     return { agentKey: newKey };

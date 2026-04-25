@@ -5,6 +5,9 @@ const { calculatePrice, parsePageRange } = require('./pricing');
 const jobService = require('./job');
 const paymentService = require('./payment');
 
+// Max shops shown per page in the shop selection list (must match messages.js SHOP_PAGE_SIZE)
+const SHOP_PAGE_SIZE = 9;
+
 async function getOrCreateConversation(platform, chatId, userId) {
   let conv = await prisma.conversation.findUnique({
     where: { platform_chatId: { platform, chatId } },
@@ -139,6 +142,8 @@ async function handleSidesChoice(conv, doubleSided) {
     if (shops.length === 1) {
       return handleShopSelection(conv, shops[0].id);
     }
+    // Store shop list in context so pagination and numeric input can resolve shop IDs
+    ctx.shopList = shops.map((s) => s.id);
     await updateConversation(conv.id, 'shop_selection', ctx);
     return { response: messages.shopListMessage(shops) };
   }
@@ -148,8 +153,28 @@ async function handleSidesChoice(conv, doubleSided) {
     return handleShopSelection(conv, openShops[0].id);
   }
 
+  // Store shop list in context so pagination and numeric input can resolve shop IDs
+  ctx.shopList = openShops.map((s) => s.id);
   await updateConversation(conv.id, 'shop_selection', ctx);
   return { response: messages.shopListMessage(openShops) };
+}
+
+/**
+ * Handle "More shops" pagination — shows next page of shops.
+ * shopList must be stored in context (array of shop IDs in display order).
+ */
+async function handleShopListPage(conv, page) {
+  const ctx = getContext(conv);
+  if (!ctx.shopList || !ctx.shopList.length) {
+    return { response: { text: 'Please send your file again to restart the order.' } };
+  }
+
+  // Reload shop details for the stored IDs in page order
+  const allShops = await Promise.all(ctx.shopList.map((id) => shopService.getShopById(id)));
+  const validShops = allShops.filter(Boolean);
+
+  await updateConversation(conv.id, 'shop_selection', ctx);
+  return { response: messages.shopListPagedMessage(validShops, page) };
 }
 
 async function handleShopSelection(conv, shopId) {
@@ -372,6 +397,7 @@ async function handleMessage(conv, messageType, data) {
     case 'color_choice':
       if (data.callback === 'color_bw') return handleColorChoice(conv, false);
       if (data.callback === 'color_color') return handleColorChoice(conv, true);
+      if (data.callback) console.warn(`[conversation] Unknown callback in color_choice: ${data.callback}`);
       return { response: messages.colorChoiceMessage() };
 
     case 'copies_count':
@@ -392,19 +418,42 @@ async function handleMessage(conv, messageType, data) {
     case 'sides_choice':
       if (data.callback === 'sides_single') return handleSidesChoice(conv, false);
       if (data.callback === 'sides_double') return handleSidesChoice(conv, true);
+      if (data.callback) console.warn(`[conversation] Unknown callback in sides_choice: ${data.callback}`);
       return { response: messages.sidesMessage() };
 
-    case 'shop_selection':
+    case 'shop_selection': {
+      // Pagination: "More shops" button sends shop_page_N
+      if (data.callback?.startsWith('shop_page_')) {
+        const page = parseInt(data.callback.replace('shop_page_', ''), 10);
+        if (!isNaN(page)) return handleShopListPage(conv, page);
+      }
+      // Direct shop selection via button
       if (data.callback?.startsWith('shop_')) {
         const shopId = data.callback.replace('shop_', '');
         return handleShopSelection(conv, shopId);
       }
+      // Text input: user typed a number (e.g. "2") to select from the displayed list
+      if (data.text) {
+        const num = parseInt(data.text.trim(), 10);
+        const ctx2 = getContext(conv);
+        if (!isNaN(num) && num >= 1 && ctx2.shopList && num <= ctx2.shopList.length) {
+          const shopId = ctx2.shopList[num - 1];
+          return handleShopSelection(conv, shopId);
+        }
+        return { response: { text: 'Please select a shop from the list or type its number.' } };
+      }
+      if (data.callback) console.warn(`[conversation] Unknown callback in shop_selection: ${data.callback}`);
       return { response: { text: 'Please select a shop from the list above.' } };
+    }
 
     case 'price_confirmation':
       if (data.callback === 'confirm_yes') return handleConfirmation(conv, true);
       if (data.callback === 'confirm_cancel') return handleConfirmation(conv, false);
-      return { response: { text: 'Please confirm or cancel your order.' } };
+      if (data.callback) {
+        // Unknown button payload — prompt again rather than silent fail
+        console.warn(`[conversation] Unknown callback in price_confirmation: ${data.callback}`);
+      }
+      return { response: { text: 'Please tap *Confirm & Pay* or *Cancel* to continue.' } };
 
     case 'payment_pending': {
       if (data.callback === 'cancel_payment') return handleCancel(conv);

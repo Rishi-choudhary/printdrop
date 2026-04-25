@@ -3,74 +3,29 @@
  * Seed Supabase database with admin user, demo shopkeeper, and demo shop.
  * Safe to run multiple times (uses upsert).
  */
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { PrismaClient } = require('@prisma/client');
+const { seedDemoData } = require('./lib/demo-seed');
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('  Seeding Supabase database...');
 
-  // 1. Admin user
-  const admin = await prisma.user.upsert({
-    where: { phone: '+919999999999' },
-    update: { role: 'admin' },
-    create: {
-      phone: '+919999999999',
-      name: 'Admin',
-      role: 'admin',
-      referralCode: 'ADMIN001',
-    },
-  });
+  const { admin, shopkeeper, shop, customer, credentials } = await seedDemoData(prisma);
+
   console.log(`  → Admin user: ${admin.id} (${admin.phone})`);
-
-  // 2. Shopkeeper user
-  const shopkeeper = await prisma.user.upsert({
-    where: { phone: '+919876543210' },
-    update: { role: 'shopkeeper' },
-    create: {
-      phone: '+919876543210',
-      name: 'Sharma Ji',
-      role: 'shopkeeper',
-      referralCode: 'SHARMA01',
-    },
-  });
   console.log(`  → Shopkeeper: ${shopkeeper.id} (${shopkeeper.name})`);
-
-  // 3. Demo shop
-  const shop = await prisma.shop.upsert({
-    where: { phone: '+919876543210' },
-    update: {},
-    create: {
-      name: 'Sharma Print & Xerox',
-      address: 'Shop #12, Near IIT Gate, Hauz Khas, New Delhi',
-      phone: '+919876543210',
-      ownerId: shopkeeper.id,
-      latitude: 28.5494,
-      longitude: 77.2001,
-      ratesBwSingle: 2,
-      ratesBwDouble: 1.5,
-      ratesColorSingle: 5,
-      ratesColorDouble: 4,
-      bindingCharge: 20,
-      spiralCharge: 30,
-      agentKey: 'agent_demo_key_12345',
-      opensAt: '00:00',
-      closesAt: '23:59',
-    },
-  });
   console.log(`  → Shop: ${shop.id} (${shop.name})`);
-
-  // 4. Demo customer
-  const customer = await prisma.user.upsert({
-    where: { phone: '+919123456789' },
-    update: {},
-    create: {
-      phone: '+919123456789',
-      name: 'Rahul Student',
-      role: 'customer',
-      referralCode: 'RAHUL001',
-    },
-  });
   console.log(`  → Customer: ${customer.id} (${customer.name})`);
+  const showCredentials = process.env.PRINTDROP_SHOW_SEED_CREDENTIALS === '1';
+  if (showCredentials) {
+    if (credentials.adminPin) console.log(`  → Generated admin PIN: ${credentials.adminPin}`);
+    if (credentials.shopkeeperPin) console.log(`  → Generated shopkeeper PIN: ${credentials.shopkeeperPin}`);
+    if (credentials.agentKey) console.log(`  → Generated agent key: ${credentials.agentKey}`);
+  } else if (credentials.adminPin || credentials.shopkeeperPin || credentials.agentKey) {
+    console.log('  → Generated demo credentials; not printing secrets. Set explicit PIN env vars to rotate demo logins if needed.');
+  }
 
   console.log('  Seed complete!');
 }

@@ -19,6 +19,7 @@
     "build:mac": "electron-builder --mac",
     "build:mac:universal": "electron-builder --mac --x64 --arm64",
     "build:linux": "electron-builder --linux",
+    "icons": "electron scripts/generate-icons.js",
     "release": "electron-builder --publish always",
     "release:draft": "electron-builder --publish onTagOrDraft",
     "postinstall": "electron-builder install-app-deps"

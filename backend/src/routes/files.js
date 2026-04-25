@@ -13,6 +13,7 @@ const path = require('path');
 const fileService = require('../services/file');
 const storage     = require('../services/storage');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { isAuthorizedForJob, isValidStorageKey } = require('../utils/request');
 
 const ERROR_MESSAGES = {
   unsupported_type: 'File type not allowed. Accepted: PDF, JPG, PNG, DOCX, PPTX.',
@@ -21,6 +22,19 @@ const ERROR_MESSAGES = {
 };
 
 async function fileRoutes(fastify) {
+  async function findAuthorizedJobByKey(key, user) {
+    if (!isValidStorageKey(key)) return { error: 'Invalid storage key', status: 400 };
+
+    const job = await fastify.prisma.job.findFirst({
+      where: { fileKey: key },
+      select: { id: true, userId: true, shopId: true },
+    });
+
+    if (!job) return { error: 'File is not attached to a known job', status: 404 };
+    if (!isAuthorizedForJob(user, job)) return { error: 'Not authorized for this file', status: 403 };
+    return { job };
+  }
+
   /**
    * POST /api/files/upload
    * Auth: any logged-in user
@@ -102,6 +116,11 @@ async function fileRoutes(fastify) {
     const { key } = request.query;
     if (!key) return reply.code(400).send({ error: 'key query param is required' });
 
+    const authorization = await findAuthorizedJobByKey(key, request.user);
+    if (authorization.error) {
+      return reply.code(authorization.status).send({ error: authorization.error });
+    }
+
     try {
       const url = await storage.getUrl(key);
       return { url, expiresIn: 3600 };
@@ -121,6 +140,11 @@ async function fileRoutes(fastify) {
   }, async (request, reply) => {
     const { key } = request.body || {};
     if (!key) return reply.code(400).send({ error: 'key is required' });
+
+    const authorization = await findAuthorizedJobByKey(key, request.user);
+    if (authorization.error) {
+      return reply.code(authorization.status).send({ error: authorization.error });
+    }
 
     try {
       await storage.remove(key);

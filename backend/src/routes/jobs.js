@@ -1,8 +1,56 @@
 const { authenticate, requireRole } = require('../middleware/auth');
 const jobService = require('../services/job');
 const paymentService = require('../services/payment');
-const { notifyUser } = require('../services/notification');
+const { notifyUser, notifyReadyForPickup } = require('../services/notification');
 const messages = require('../bot/messages');
+const { parseInteger, isAuthorizedForJob, isValidStorageKey } = require('../utils/request');
+
+const JOB_STATUSES = new Set(['pending', 'payment_pending', 'queued', 'printing', 'ready', 'picked_up', 'cancelled']);
+const PAPER_SIZES = new Set(['A4', 'A3', 'Legal']);
+const BINDINGS = new Set(['none', 'staple', 'spiral']);
+
+function toBoolean(value, defaultValue = false) {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return defaultValue;
+}
+
+function validateJobInput(body) {
+  const errors = [];
+  const pageCount = parseInteger(body.pageCount, { defaultValue: 1, min: 1, max: 5000 });
+  const copies = parseInteger(body.copies, { defaultValue: 1, min: 1, max: 100 });
+  const paperSize = body.paperSize || 'A4';
+  const binding = body.binding || 'none';
+  const fileType = String(body.fileType || 'pdf').toLowerCase();
+
+  if (!body.shopId || typeof body.shopId !== 'string') errors.push('shopId is required');
+  if (!body.fileName || typeof body.fileName !== 'string') errors.push('fileName is required');
+  if (!body.fileKey || !isValidStorageKey(body.fileKey)) errors.push('A valid uploaded fileKey is required');
+  if (body.fileUrl && typeof body.fileUrl !== 'string') errors.push('fileUrl must be a string');
+  if (!/^[a-z0-9]+$/.test(fileType)) errors.push('fileType is invalid');
+  if (!PAPER_SIZES.has(paperSize)) errors.push('paperSize is invalid');
+  if (!BINDINGS.has(binding)) errors.push('binding is invalid');
+
+  return {
+    errors,
+    value: {
+      shopId: body.shopId,
+      fileUrl: body.fileUrl || '',
+      fileKey: body.fileKey,
+      fileName: body.fileName,
+      fileSize: parseInteger(body.fileSize, { defaultValue: 0, min: 0, max: 1024 * 1024 * 1024 }),
+      fileType,
+      pageCount,
+      color: toBoolean(body.color),
+      copies,
+      doubleSided: toBoolean(body.doubleSided),
+      paperSize,
+      pageRange: body.pageRange || 'all',
+      binding,
+    },
+  };
+}
 
 async function jobRoutes(fastify) {
   // GET /jobs — list jobs (role-filtered)
@@ -10,7 +58,9 @@ async function jobRoutes(fastify) {
     preHandler: [authenticate],
   }, async (request, reply) => {
     const { role, id: userId } = request.user;
-    const { status, limit = 20, offset = 0 } = request.query;
+    const { status } = request.query;
+    const limit = parseInteger(request.query.limit, { defaultValue: 20, min: 1, max: 100 });
+    const offset = parseInteger(request.query.offset, { defaultValue: 0, min: 0, max: 100000 });
 
     const where = {};
     if (role === 'customer') {
@@ -22,7 +72,7 @@ async function jobRoutes(fastify) {
 
     if (status === 'completed') {
       where.status = { in: ['picked_up', 'cancelled'] };
-    } else if (status) {
+    } else if (status && JOB_STATUSES.has(status)) {
       where.status = status;
     }
 
@@ -31,13 +81,13 @@ async function jobRoutes(fastify) {
         where,
         include: { shop: true, user: { select: { id: true, name: true, phone: true } }, payment: true },
         orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset),
+        take: limit,
+        skip: offset,
       }),
       fastify.prisma.job.count({ where }),
     ]);
 
-    return { jobs, total, limit: parseInt(limit), offset: parseInt(offset) };
+    return { jobs, total, limit, offset };
   });
 
   // GET /jobs/:id — job details
@@ -67,31 +117,14 @@ async function jobRoutes(fastify) {
   fastify.post('/', {
     preHandler: [authenticate],
   }, async (request, reply) => {
-    const {
-      shopId, fileUrl, fileKey, fileName, fileSize, fileType,
-      pageCount, color, copies, doubleSided, paperSize,
-      pageRange, binding,
-    } = request.body;
-
-    if (!shopId || !fileUrl || !fileName) {
-      return reply.code(400).send({ error: 'shopId, fileUrl, and fileName are required' });
+    const { errors, value } = validateJobInput(request.body || {});
+    if (errors.length > 0) {
+      return reply.code(400).send({ error: errors.join(', ') });
     }
 
     const { job, pricing } = await jobService.createJob({
       userId: request.user.id,
-      shopId,
-      fileUrl,
-      fileKey,
-      fileName,
-      fileSize: fileSize || 0,
-      fileType: fileType || 'pdf',
-      pageCount: pageCount || 1,
-      color: color || false,
-      copies: copies || 1,
-      doubleSided: doubleSided || false,
-      paperSize: paperSize || 'A4',
-      pageRange: pageRange || 'all',
-      binding: binding || 'none',
+      ...value,
       source: 'web',
     });
 
@@ -103,7 +136,7 @@ async function jobRoutes(fastify) {
     preHandler: [authenticate],
   }, async (request, reply) => {
     const { status, printerId, printerName } = request.body;
-    if (!status) return reply.code(400).send({ error: 'status is required' });
+    if (!status || !JOB_STATUSES.has(status)) return reply.code(400).send({ error: 'Valid status is required' });
 
     const job = await fastify.prisma.job.findUnique({
       where: { id: request.params.id },
@@ -124,9 +157,13 @@ async function jobRoutes(fastify) {
     try {
       const updated = await jobService.updateJobStatus(request.params.id, status, { printerId, printerName });
 
-      // Notify customer
+      // Notify customer — use template-aware call for "ready" (may arrive outside 24h window)
       try {
-        await notifyUser(updated.userId, messages.statusUpdateMessage(status, updated.token));
+        if (status === 'ready') {
+          await notifyReadyForPickup(updated.userId, updated.token, job.shop?.name || 'the shop');
+        } else {
+          await notifyUser(updated.userId, messages.statusUpdateMessage(status, updated.token));
+        }
       } catch (err) {
         console.error('Notification error:', err);
       }
@@ -149,6 +186,12 @@ async function jobRoutes(fastify) {
     const { printerName, printerId } = request.body || {};
 
     try {
+      const job = await fastify.prisma.job.findUnique({ where: { id: request.params.id } });
+      if (!job) return reply.code(404).send({ error: 'Job not found' });
+      if (role === 'shopkeeper' && request.user.shop?.id !== job.shopId) {
+        return reply.code(403).send({ error: 'Not authorized' });
+      }
+
       const claimed = await jobService.claimJob(request.params.id, { printerName, printerId });
 
       if (!claimed) {
@@ -156,20 +199,20 @@ async function jobRoutes(fastify) {
       }
 
       // Notify customer
-      const job = await fastify.prisma.job.findUnique({
+      const updatedJob = await fastify.prisma.job.findUnique({
         where: { id: request.params.id },
         include: { shop: true, user: true },
       });
 
-      if (job) {
+      if (updatedJob) {
         try {
-          await notifyUser(job.userId, messages.statusUpdateMessage('printing', job.token));
+          await notifyUser(updatedJob.userId, messages.statusUpdateMessage('printing', updatedJob.token));
         } catch (err) {
           console.error('Notification error:', err);
         }
       }
 
-      return { claimed: true, job };
+      return { claimed: true, job: updatedJob };
     } catch (err) {
       return reply.code(400).send({ error: err.message });
     }
@@ -187,6 +230,9 @@ async function jobRoutes(fastify) {
 
     const { role, id: userId } = request.user;
     if (role === 'customer' && job.userId !== userId) {
+      return reply.code(403).send({ error: 'Not authorized' });
+    }
+    if (role === 'shopkeeper' && request.user.shop?.id !== job.shopId) {
       return reply.code(403).send({ error: 'Not authorized' });
     }
 
@@ -273,6 +319,8 @@ async function jobRoutes(fastify) {
   }, async (request, reply) => {
     const payment = await paymentService.getPaymentStatus(request.params.id);
     if (!payment) return reply.code(404).send({ error: 'No payment found' });
+    const job = await fastify.prisma.job.findUnique({ where: { id: request.params.id } });
+    if (!isAuthorizedForJob(request.user, job)) return reply.code(403).send({ error: 'Not authorized' });
     return payment;
   });
 
@@ -286,6 +334,12 @@ async function jobRoutes(fastify) {
     );
 
     if (!job) return reply.code(404).send({ error: 'Job not found' });
+    if (request.user.role === 'shopkeeper' && request.user.shop?.id !== job.shopId) {
+      return reply.code(403).send({ error: 'Not authorized' });
+    }
+    if (request.user.role === 'customer' && job.userId !== request.user.id) {
+      return reply.code(403).send({ error: 'Not authorized' });
+    }
     return job;
   });
 }

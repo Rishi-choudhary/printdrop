@@ -460,3 +460,66 @@ body {
   background: var(--surface-2);
   color: var(--text-faint);
 }
+
+.job-badge.needs_review {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+.job-badge.sync_pending_ready,
+.job-badge.sync_pending_pickup {
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--brand-500);
+}
+
+/* ── Status banners ───────────────────────────────────────────────────────── */
+
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.status-banner[hidden] { display: none; }
+
+.offline-banner {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.sync-banner {
+  background: rgba(79, 142, 247, 0.1);
+  color: var(--brand-500);
+  border-bottom: 1px solid rgba(79, 142, 247, 0.2);
+}
+
+/* ── Per-job error message ────────────────────────────────────────────────── */
+
+.job-error {
+  font-size: 10.5px;
+  color: var(--danger);
+  margin-top: 3px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* ── Retry / review action buttons ─────────────────────────────────────────── */
+
+.job-btn-retry {
+  background: var(--surface-2);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+}
+.job-btn-retry:hover { background: var(--brand-500); color: #fff; border-color: var(--brand-500); }
+
+.job-btn-review {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.job-btn-review:hover { background: #d97706; color: #fff; border-color: #d97706; }

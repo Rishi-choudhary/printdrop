@@ -8,6 +8,7 @@ import {
   Key, Download, Monitor, Printer, CheckCircle2, Copy, Check,
   ArrowRight, ArrowLeft, Loader2, AlertCircle, ExternalLink,
 } from 'lucide-react';
+import { encodePathSegment } from '@/lib/security';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -16,6 +17,7 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [agentKey, setAgentKey] = useState('');
+  const [hasAgentKey, setHasAgentKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shopId, setShopId] = useState('');
   const [testJobId, setTestJobId] = useState('');
@@ -26,9 +28,9 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (!user?.shop?.id) return;
     setShopId(user.shop.id);
-    api.get(`/shops/${user.shop.id}`)
+    api.get(`/shops/${encodePathSegment(user.shop.id)}`)
       .then((shop: any) => {
-        if (shop.agentKey) setAgentKey(shop.agentKey);
+        setHasAgentKey(Boolean(shop.hasAgentKey));
       })
       .catch(() => {});
   }, [user?.shop?.id]);
@@ -42,8 +44,9 @@ export default function OnboardingPage() {
   const generateKey = async () => {
     if (!shopId) return;
     try {
-      const res = await api.post(`/shops/${shopId}/agent-key`, {});
+      const res = await api.post(`/shops/${encodePathSegment(shopId)}/agent-key`, {});
       setAgentKey(res.agentKey);
+      setHasAgentKey(true);
     } catch (err: any) {
       setError(err.message);
     }
@@ -54,7 +57,7 @@ export default function OnboardingPage() {
     setTestStatus('sending');
     setError('');
     try {
-      const res = await api.post(`/shops/${shopId}/test-print`, {});
+      const res = await api.post(`/shops/${encodePathSegment(shopId)}/test-print`, {});
       setTestJobId(res.job.id);
       setTestStatus('polling');
     } catch (err: any) {
@@ -73,7 +76,7 @@ export default function OnboardingPage() {
     const interval = setInterval(async () => {
       attempts++;
       try {
-        const job = await api.get(`/jobs/${testJobId}`);
+        const job = await api.get(`/jobs/${encodePathSegment(testJobId)}`);
         if (job.status === 'ready' || job.status === 'picked_up') {
           setTestStatus('success');
           clearInterval(interval);
@@ -196,6 +199,18 @@ export default function OnboardingPage() {
                   {copied && (
                     <p className="text-green-600 text-xs font-medium">Copied to clipboard!</p>
                   )}
+                </div>
+              ) : hasAgentKey ? (
+                <div className="text-center py-6">
+                  <p className="text-gray-500 text-sm mb-3">
+                    An agent key already exists but cannot be shown again. Generate a new one to copy it.
+                  </p>
+                  <button
+                    onClick={generateKey}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors"
+                  >
+                    Regenerate Agent Key
+                  </button>
                 </div>
               ) : (
                 <div className="text-center py-6">

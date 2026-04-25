@@ -133,15 +133,47 @@ async function getPageCountSmart(fileBuffer, fileName) {
   return 1; // fallback
 }
 
-async function downloadFile(url, headers = {}) {
+/**
+ * Download a file from a URL and store it via the storage driver.
+ * @param {string} url  - The URL to fetch.
+ * @param {Object} headers - Optional HTTP headers (e.g. Authorization).
+ * @param {string} [hintFileName] - Preferred filename (e.g. from the WhatsApp payload).
+ *   When provided and it has a valid extension, it takes priority over the URL path.
+ */
+async function downloadFile(url, headers = {}, hintFileName) {
   const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new Error(`Failed to download file: ${response.status}`);
   }
 
+  // Check Content-Length header before downloading (when available)
+  const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+  if (contentLength > MAX_SIZE) {
+    throw new Error(`File too large: ${(contentLength / 1024 / 1024).toFixed(1)}MB (max ${config.upload.maxFileSizeMb}MB)`);
+  }
+
   const buffer = Buffer.from(await response.arrayBuffer());
-  const urlPath = new URL(url).pathname;
-  const originalName = path.basename(urlPath) || 'download.pdf';
+
+  // Double-check actual size for chunked transfers where Content-Length may be absent
+  if (buffer.length > MAX_SIZE) {
+    throw new Error(`File too large: ${(buffer.length / 1024 / 1024).toFixed(1)}MB (max ${config.upload.maxFileSizeMb}MB)`);
+  }
+
+  // 1. Prefer a caller-supplied filename (from Gupshup payload).
+  if (hintFileName && path.extname(hintFileName)) {
+    return saveUploadedFile(buffer, hintFileName);
+  }
+
+  // 2. Infer a filename from the URL path (ignore query strings).
+  //    Use a try/catch in case the URL has unusual characters.
+  let originalName = 'download.pdf';
+  try {
+    const urlPath = new URL(url).pathname;
+    const base = path.basename(urlPath);
+    if (base && base !== '/') originalName = base;
+  } catch {
+    // Malformed URL — fall back to safe default
+  }
 
   return saveUploadedFile(buffer, originalName);
 }

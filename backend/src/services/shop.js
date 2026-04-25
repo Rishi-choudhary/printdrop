@@ -1,4 +1,5 @@
 const prisma = require('./prisma');
+const { generateAgentKey, hashAgentKey } = require('./agent-key');
 
 async function getActiveShops() {
   return prisma.shop.findMany({
@@ -33,6 +34,7 @@ function isShopOpen(shop) {
 }
 
 async function createShop(data) {
+  const agentKey = data.agentKey || generateAgentKey();
   return prisma.shop.create({
     data: {
       name: data.name,
@@ -41,7 +43,7 @@ async function createShop(data) {
       latitude: data.latitude,
       longitude: data.longitude,
       ownerId: data.ownerId,
-      agentKey: `agent_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+      agentKeyHash: hashAgentKey(agentKey),
     },
     include: { owner: { select: { id: true, name: true, phone: true } } },
   });

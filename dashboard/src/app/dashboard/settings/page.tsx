@@ -7,6 +7,7 @@ import { Card, CardHeader, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Copy, RefreshCw, CheckCircle, Printer, Plus, Pencil, Trash2, X, Wifi, WifiOff, Monitor } from 'lucide-react';
+import { encodePathSegment } from '@/lib/security';
 
 // ─── Printer types ────────────────────────────────────────────────────────────
 interface ShopPrinter {
@@ -43,7 +44,7 @@ function PrintersSection({ shopId }: { shopId: string }) {
 
   const loadPrinters = useCallback(async () => {
     try {
-      const data = await api.get(`/printers/shop/${shopId}`);
+      const data = await api.get(`/printers/shop/${encodePathSegment(shopId)}`);
       setPrinters(Array.isArray(data) ? data : []);
     } catch {
       // ignore
@@ -93,7 +94,7 @@ function PrintersSection({ shopId }: { shopId: string }) {
     setError('');
     try {
       if (editingId) {
-        await api.patch(`/printers/${editingId}`, form);
+        await api.patch(`/printers/${encodePathSegment(editingId)}`, form);
       } else {
         await api.post('/printers', { ...form, shopId });
       }
@@ -110,7 +111,7 @@ function PrintersSection({ shopId }: { shopId: string }) {
     if (!confirm('Delete this printer? Jobs assigned to it will keep their printer name for records.')) return;
     setDeletingId(id);
     try {
-      await api.delete(`/printers/${id}`);
+      await api.delete(`/printers/${encodePathSegment(id)}`);
       await loadPrinters();
     } catch {
       // ignore
@@ -281,8 +282,8 @@ function AgentStatusSection({ shopId }: { shopId: string }) {
     const load = async () => {
       try {
         const [s, p] = await Promise.all([
-          api.get(`/shops/${shopId}`),
-          api.get(`/printers/shop/${shopId}`),
+          api.get(`/shops/${encodePathSegment(shopId)}`),
+          api.get(`/printers/shop/${encodePathSegment(shopId)}`),
         ]);
         setShop(s);
         setPrinters(Array.isArray(p) ? p : []);
@@ -375,13 +376,15 @@ export default function SettingsPage() {
   const [rateError, setRateError] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [generatedAgentKey, setGeneratedAgentKey] = useState('');
 
   useEffect(() => {
     if (shopId) {
-      api.get(`/shops/${shopId}`).then(setShop);
+      api.get(`/shops/${encodePathSegment(shopId)}`).then(setShop);
     }
   }, [shopId]);
 
+  if (!shopId) return <p className="text-center py-8 text-gray-500">No shop is linked to this account.</p>;
   if (!shop) return <p className="text-center py-8 text-gray-500">Loading shop settings...</p>;
 
   const updateField = (key: string, value: any) => {
@@ -391,7 +394,7 @@ export default function SettingsPage() {
   const saveDetails = async () => {
     setSaving(true);
     try {
-      await api.patch(`/shops/${shopId}`, {
+      await api.patch(`/shops/${encodePathSegment(shopId)}`, {
         name: shop.name,
         address: shop.address,
         opensAt: shop.opensAt,
@@ -421,7 +424,7 @@ export default function SettingsPage() {
     }
     setSaving(true);
     try {
-      await api.patch(`/shops/${shopId}/rates`, {
+      await api.patch(`/shops/${encodePathSegment(shopId)}/rates`, {
         ratesBwSingle: shop.ratesBwSingle,
         ratesBwDouble: shop.ratesBwDouble,
         ratesColorSingle: shop.ratesColorSingle,
@@ -537,19 +540,19 @@ export default function SettingsPage() {
         <CardHeader><h2 className="font-semibold">Print Agent</h2></CardHeader>
         <CardBody className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Copy this key and set it as <code className="bg-muted px-1 rounded text-foreground text-xs font-mono">AGENT_KEY</code> on
-            the machine where the print agent runs.
+            Agent keys are shown only once when generated. Copy the new key and paste it into the desktop agent on the
+            machine where the print agent runs.
           </p>
 
-          {shop.agentKey ? (
+          {generatedAgentKey ? (
             <div className="flex items-center gap-2">
               <code className="flex-1 block bg-muted border border-border px-3 py-2 rounded-lg text-sm font-mono break-all select-all text-foreground">
-                {shop.agentKey}
+                {generatedAgentKey}
               </code>
               <button
                 title="Copy key"
                 onClick={() => {
-                  navigator.clipboard.writeText(shop.agentKey);
+                  navigator.clipboard.writeText(generatedAgentKey);
                   setKeyCopied(true);
                   setTimeout(() => setKeyCopied(false), 2000);
                 }}
@@ -558,6 +561,10 @@ export default function SettingsPage() {
                 {keyCopied ? <CheckCircle className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
+          ) : shop.hasAgentKey ? (
+            <p className="text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded">
+              An agent key already exists. It cannot be shown again; regenerate it if you need a new copy.
+            </p>
           ) : (
             <p className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded">
               No agent key yet. Click Generate to create one.
@@ -567,7 +574,7 @@ export default function SettingsPage() {
           <div className="bg-muted/50 border border-border rounded-xl p-4 text-sm space-y-1 text-muted-foreground">
             <p className="font-medium text-foreground mb-2">Setup on the shop machine:</p>
             <code className="block text-xs bg-background border border-border rounded-lg px-3 py-2 font-mono text-foreground">
-              AGENT_KEY={shop.agentKey || 'your_key_here'} node src/index.js
+              AGENT_KEY={generatedAgentKey || 'your_new_key_here'} node src/index.js
             </code>
           </div>
 
@@ -576,11 +583,12 @@ export default function SettingsPage() {
             size="sm"
             disabled={regenerating}
             onClick={async () => {
-              if (shop.agentKey && !confirm('Regenerating will invalidate the current key. Continue?')) return;
+              if ((shop.hasAgentKey || generatedAgentKey) && !confirm('Regenerating will invalidate the current key. Continue?')) return;
               setRegenerating(true);
               try {
-                const data = await api.post(`/shops/${shopId}/agent-key`, {});
-                setShop({ ...shop, agentKey: data.agentKey });
+                const data = await api.post(`/shops/${encodePathSegment(shopId)}/agent-key`, {});
+                setGeneratedAgentKey(data.agentKey);
+                setShop({ ...shop, hasAgentKey: true });
                 setMsg('New agent key generated!');
                 setTimeout(() => setMsg(''), 3000);
               } finally {
@@ -589,7 +597,7 @@ export default function SettingsPage() {
             }}
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${regenerating ? 'animate-spin' : ''}`} />
-            {shop.agentKey ? 'Regenerate Key' : 'Generate Key'}
+            {shop.hasAgentKey || generatedAgentKey ? 'Regenerate Key' : 'Generate Key'}
           </Button>
         </CardBody>
       </Card>

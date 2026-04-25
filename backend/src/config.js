@@ -25,10 +25,18 @@ const config = {
   whatsapp: {
     // Gupshup send endpoint
     apiUrl: process.env.WHATSAPP_API_URL || 'https://api.gupshup.io/wa/api/v1/msg',
+    // Gupshup template/HSM endpoint — used for business-initiated messages outside 24h session window
+    templateApiUrl: process.env.WHATSAPP_TEMPLATE_URL || 'https://api.gupshup.io/wa/api/v1/template/msg',
     apiKey: process.env.WHATSAPP_API_KEY || '',           // Gupshup API key
     webhookSecret: process.env.WHATSAPP_WEBHOOK_SECRET || '', // optional token for webhook verification
     sourceNumber: process.env.GUPSHUP_SOURCE_NUMBER || '', // your WhatsApp number e.g. "918291234567"
     appName: process.env.GUPSHUP_APP_NAME || 'PrintDrop',  // Gupshup app/bot name
+    // Approved Gupshup template IDs for business-initiated messages.
+    // If blank, falls back to regular freeform message (only works within 24h session window).
+    templates: {
+      tokenIssued: process.env.GUPSHUP_TEMPLATE_TOKEN_ISSUED || '',
+      readyForPickup: process.env.GUPSHUP_TEMPLATE_READY_FOR_PICKUP || '',
+    },
   },
 
   razorpay: {

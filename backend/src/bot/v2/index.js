@@ -3,9 +3,19 @@
 /**
  * PrintDrop WhatsApp bot v2 — zero-OTP, 3-state, minimal-message flow.
  *
- * Flag: set `BOT_V2=1` in the backend env to route inbound WhatsApp webhooks
- * through this module instead of the legacy multi-step handler. The flag is
- * read on every call so you can flip it live without a restart.
+ * ⚠️  EXPERIMENTAL — enabled via BOT_V2=1 env flag.
+ *
+ * This is NOT the production path. The default production bot is the
+ * legacy DB-backed flow in bot/whatsapp.js + services/conversation.js.
+ *
+ * Key differences from v1 (legacy):
+ *   - In-memory sessions (lost on restart; users fall back to IDLE gracefully)
+ *   - No OTP — phone number is identity
+ *   - 3-state FSM: IDLE → AWAITING_CHOICE → AWAITING_PAYMENT
+ *   - Simplified pricing: no paper size / sides / custom page range choices
+ *   - Multi-shop selection NOT supported (picks first active shop)
+ *
+ * The flag is re-read on every webhook so you can flip it live without a restart.
  */
 
 const prisma = require('../../services/prisma');

@@ -39,7 +39,8 @@ async function handle(msg, user /*, session */) {
       : {};
 
     if (msg.fileUrl) {
-      saved = await fileService.downloadFile(msg.fileUrl, headers);
+      // Pass inferred filename as hint so storage uses the correct extension
+      saved = await fileService.downloadFile(msg.fileUrl, headers, msg.fileName);
     } else if (msg.fileId) {
       const resp = await fetch(`${config.whatsapp.apiUrl}/${msg.fileId}`, {
         headers: { Authorization: `Bearer ${config.whatsapp.apiKey}` },
@@ -47,7 +48,7 @@ async function handle(msg, user /*, session */) {
       const data = await resp.json();
       saved = await fileService.downloadFile(data.url, {
         Authorization: `Bearer ${config.whatsapp.apiKey}`,
-      });
+      }, msg.fileName);
     } else {
       throw new Error('no file url or id');
     }
