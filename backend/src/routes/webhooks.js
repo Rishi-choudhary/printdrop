@@ -349,6 +349,40 @@ async function webhookRoutes(fastify) {
     }
   });
 
+  // POST /webhooks/razorpay/client-error — browser-side Checkout failures.
+  // Razorpay can fail inside the Checkout UI before a Payment record exists on
+  // their API, so server-side order/payment fetches show no failure detail.
+  fastify.post('/razorpay/client-error', async (request, reply) => {
+    const {
+      job_id,
+      razorpay_order_id,
+      code,
+      description,
+      source,
+      step,
+      reason,
+      metadata,
+    } = request.body || {};
+
+    console.error('[razorpay-client-error]', {
+      job_id,
+      razorpay_order_id,
+      code,
+      description,
+      source,
+      step,
+      reason,
+      metadata: metadata
+        ? {
+            order_id: metadata.order_id,
+            payment_id: metadata.payment_id,
+          }
+        : undefined,
+    });
+
+    return { ok: true };
+  });
+
   // POST /webhooks/razorpay/mock — dev-only: simulate payment success
   if (process.env.NODE_ENV !== 'production') {
     fastify.post('/razorpay/mock', async (request, reply) => {

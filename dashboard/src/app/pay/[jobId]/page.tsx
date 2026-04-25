@@ -58,6 +58,14 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
     setPaying(true);
     setError('');
 
+    const reportCheckoutError = (payload: any) => {
+      fetch('/api/webhooks/razorpay/client-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    };
+
     // Standard Checkout — open Razorpay modal inline
     if (RAZORPAY_KEY_ID) {
       try {
@@ -124,6 +132,16 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
 
         const rzp = new window.Razorpay(options);
         rzp.on('payment.failed', (response: any) => {
+          reportCheckoutError({
+            job_id: jobId,
+            razorpay_order_id: data.orderId,
+            code: response.error?.code,
+            description: response.error?.description,
+            source: response.error?.source,
+            step: response.error?.step,
+            reason: response.error?.reason,
+            metadata: response.error?.metadata,
+          });
           setError(response.error?.description || 'Payment failed. Please try again.');
           setPaying(false);
         });
