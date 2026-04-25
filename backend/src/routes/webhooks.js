@@ -92,6 +92,7 @@ async function webhookRoutes(fastify) {
         const razorpayPaymentLinkId =
           payload.payment_link?.entity?.id ||
           payload.payment?.entity?.payment_link_id ||
+          payload.payment?.entity?.order_id ||
           null;
 
         const { payment, justPaid } = await paymentService.handlePaymentSuccess(

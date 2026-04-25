@@ -97,17 +97,18 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
                 }));
                 setPaid(true);
               } else {
-                setError(result.error || 'Payment verification failed. Your token will arrive via WhatsApp shortly.');
-                setPaid(true); // webhook will confirm in background
+                setError(result.error || 'Payment verification failed. Please do not retry if money was debited; your token will arrive once Razorpay confirms it.');
               }
             } catch {
-              setError('Payment received but confirmation pending. Your token will arrive via WhatsApp.');
-              setPaid(true);
+              setError('Payment confirmation is pending. Please do not retry if money was debited; your token will arrive once Razorpay confirms it.');
             }
             setPaying(false);
           },
           modal: {
-            ondismiss: () => setPaying(false),
+            ondismiss: () => {
+              setPaying(false);
+              setError('Payment was not completed. Please try again when you are ready.');
+            },
           },
           theme: { color: '#2563EB' },
         };

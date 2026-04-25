@@ -30,6 +30,9 @@ async function createPaymentLink({ jobId, orderId, amount, customerPhone, custom
 
   const rz = getRazorpay();
   const isOrder = !!orderId;
+  const appCheckoutPath = isOrder ? `/pay/order/${orderId}` : `/pay/${jobId}`;
+  const appCheckoutLink = `${config.frontendUrl || 'http://localhost:3000'}${appCheckoutPath}`;
+  const useHostedPaymentLinks = process.env.RAZORPAY_USE_HOSTED_LINKS === '1';
 
   let target;
   if (isOrder) {
@@ -50,6 +53,54 @@ async function createPaymentLink({ jobId, orderId, amount, customerPhone, custom
   const existingPayment = isOrder
     ? await prisma.payment.findUnique({ where: { orderId } })
     : await prisma.payment.findUnique({ where: { jobId } });
+
+  if (!useHostedPaymentLinks) {
+    if (existingPayment) {
+      if (existingPayment.razorpayPaymentLink !== appCheckoutLink) {
+        await prisma.payment.update({
+          where: { id: existingPayment.id },
+          data: { razorpayPaymentLink: appCheckoutLink },
+        });
+      }
+      return {
+        paymentLink: appCheckoutLink,
+        paymentId: existingPayment.id,
+        mock: false,
+        existing: true,
+        status: existingPayment.status,
+      };
+    }
+
+    const payment = await prisma.payment.create({
+      data: {
+        ...(isOrder ? { orderId } : { jobId }),
+        amount,
+        currency: 'INR',
+        razorpayPaymentLink: appCheckoutLink,
+        status: 'pending',
+        userId: target?.userId,
+      },
+    });
+
+    if (isOrder) {
+      await prisma.order.updateMany({
+        where: { id: orderId, status: 'pending' },
+        data: { status: 'payment_pending' },
+      });
+      await prisma.job.updateMany({
+        where: { orderId, status: 'pending' },
+        data: { status: 'payment_pending' },
+      });
+    } else {
+      await prisma.job.updateMany({
+        where: { id: jobId, status: 'pending' },
+        data: { status: 'payment_pending' },
+      });
+    }
+
+    return { paymentLink: appCheckoutLink, paymentId: payment.id, mock: false };
+  }
+
   if (existingPayment?.razorpayPaymentLink) {
     return {
       paymentLink: existingPayment.razorpayPaymentLink,
@@ -405,12 +456,17 @@ async function createCheckoutOrder({ jobId, orderId }) {
 
   // Idempotency: reuse an existing Razorpay order (not a payment link)
   if (existingPayment?.razorpayOrderId?.startsWith('order_')) {
-    return {
-      orderId: existingPayment.razorpayOrderId,
-      amount: Math.round(target.totalPrice * 100),
-      currency: 'INR',
-      keyId: config.razorpay.keyId,
-    };
+    try {
+      await rz.orders.fetch(existingPayment.razorpayOrderId);
+      return {
+        orderId: existingPayment.razorpayOrderId,
+        amount: Math.round(target.totalPrice * 100),
+        currency: 'INR',
+        keyId: config.razorpay.keyId,
+      };
+    } catch (err) {
+      console.warn(`[payment] Existing Razorpay order could not be fetched with current keys; creating a new order (${err.message})`);
+    }
   }
 
   const receiptId = isOrder ? `ord_${orderId.slice(-12)}` : `job_${jobId.slice(-12)}`;

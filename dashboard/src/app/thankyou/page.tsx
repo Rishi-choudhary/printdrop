@@ -45,7 +45,7 @@ function ThankYouContent() {
 
     async function processPayment() {
       // Try server-side callback verification first (Razorpay params present)
-      if (razorpayPaymentId && razorpayPaymentLinkId) {
+      if (razorpayPaymentId && razorpayPaymentLinkId && razorpaySignature && razorpayPaymentLinkStatus === 'paid') {
         try {
           const res = await fetch('/api/webhooks/razorpay/callback', {
             method: 'POST',
@@ -75,6 +75,10 @@ function ThankYouContent() {
         } catch {
           // Fall through to polling
         }
+      } else {
+        setErrorMsg('Payment was not completed. Please return to the payment link and try again.');
+        setState('error');
+        return;
       }
 
       // Fallback: poll until job status reflects payment (webhook may be in-flight)
