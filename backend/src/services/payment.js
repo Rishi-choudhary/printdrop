@@ -32,7 +32,10 @@ async function createPaymentLink({ jobId, orderId, amount, customerPhone, custom
   const isOrder = !!orderId;
   const appCheckoutPath = isOrder ? `/pay/order/${orderId}` : `/pay/${jobId}`;
   const appCheckoutLink = `${config.frontendUrl || 'https://printdrop.app'}${appCheckoutPath}`;
-  const useHostedPaymentLinks = process.env.RAZORPAY_USE_HOSTED_LINKS === '1';
+  // Default to Razorpay-hosted payment links (rzp.io/...). Set
+  // RAZORPAY_USE_HOSTED_LINKS=0 to fall back to the in-app /pay/[jobId] page
+  // that opens Razorpay Standard Checkout via checkout.js.
+  const useHostedPaymentLinks = process.env.RAZORPAY_USE_HOSTED_LINKS !== '0';
 
   let target;
   if (isOrder) {
