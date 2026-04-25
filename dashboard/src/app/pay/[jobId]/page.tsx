@@ -16,6 +16,7 @@ declare global {
 }
 
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+const RAZORPAY_ENABLE_UPI = process.env.NEXT_PUBLIC_RAZORPAY_ENABLE_UPI === '1';
 
 export default function PaymentPage({ params }: { params: { jobId: string } }) {
   const { jobId } = params;
@@ -110,6 +111,14 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
               setError('Payment was not completed. Please try again when you are ready.');
             },
           },
+          config: RAZORPAY_ENABLE_UPI
+            ? undefined
+            : {
+                display: {
+                  hide: [{ method: 'upi' }],
+                  preferences: { show_default_blocks: true },
+                },
+              },
           theme: { color: '#2563EB' },
         };
 
