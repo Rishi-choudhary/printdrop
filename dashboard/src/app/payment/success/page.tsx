@@ -73,6 +73,20 @@ function PaymentSuccessContent() {
             setState('success');
             return;
           }
+
+          // 402: Razorpay says payment not yet captured — keep polling instead
+          // of falsely showing success.
+          if (res.status === 402 && data?.notPaid) {
+            setState('polling');
+            await pollJobStatus(jobId!);
+            return;
+          }
+
+          if (data?.error) {
+            setErrorMsg(data.error);
+            setState('error');
+            return;
+          }
         } catch {
           // Fall through to polling
         }

@@ -244,10 +244,79 @@ function verifyWebhookSignature(rawBody, signature) {
 }
 
 /**
+ * Server-side verification: confirm Razorpay actually captured the money before
+ * we mark anything as paid. This is the SOLE source of truth — never trust
+ * client-side redirect params, even when their HMAC signature is valid.
+ *
+ * Razorpay's hosted UPI page can show "Confirm Payment" / optimistic success UI
+ * before the bank settles the intent. Without this guard, a user who exits the
+ * UPI app without paying could still trigger a token because the redirect URL
+ * carries status=paid.
+ *
+ * Returns true if Razorpay confirms paid/captured, false otherwise.
+ * Returns true (skips check) for mock IDs in development.
+ */
+async function verifyWithRazorpay(razorpayPaymentId, razorpayPaymentLinkId) {
+  // Mock IDs (dev mode) — skip verification
+  if (
+    (razorpayPaymentId && razorpayPaymentId.startsWith('mock_')) ||
+    (razorpayPaymentLinkId && razorpayPaymentLinkId.startsWith('mock_'))
+  ) {
+    return { ok: true, status: 'mock' };
+  }
+
+  const rz = getRazorpay();
+  if (!rz) {
+    // No Razorpay configured — only allowed in dev
+    return { ok: !!config.isDev, status: 'no_client' };
+  }
+
+  // Prefer payment_link verification when we have a plink_ id (hosted links)
+  if (razorpayPaymentLinkId && razorpayPaymentLinkId.startsWith('plink_')) {
+    try {
+      const link = await rz.paymentLink.fetch(razorpayPaymentLinkId);
+      return { ok: link.status === 'paid', status: link.status };
+    } catch (err) {
+      console.error('[payment] paymentLink.fetch failed:', err.message);
+      return { ok: false, status: 'fetch_error', error: err.message };
+    }
+  }
+
+  // Standard Checkout — order_xxx id; check the order's payment status
+  if (razorpayPaymentLinkId && razorpayPaymentLinkId.startsWith('order_')) {
+    try {
+      const order = await rz.orders.fetch(razorpayPaymentLinkId);
+      // 'paid' on an order means at least one captured payment exists for it
+      return { ok: order.status === 'paid', status: order.status };
+    } catch (err) {
+      console.error('[payment] orders.fetch failed:', err.message);
+      return { ok: false, status: 'fetch_error', error: err.message };
+    }
+  }
+
+  // Fallback to payment id verification
+  if (razorpayPaymentId && /^pay_[A-Za-z0-9]+$/.test(razorpayPaymentId)) {
+    try {
+      const p = await rz.payments.fetch(razorpayPaymentId);
+      return { ok: p.status === 'captured', status: p.status };
+    } catch (err) {
+      console.error('[payment] payments.fetch failed:', err.message);
+      return { ok: false, status: 'fetch_error', error: err.message };
+    }
+  }
+
+  return { ok: false, status: 'unverifiable' };
+}
+
+/**
  * Handle successful payment — update payment + job/order status.
  *
  * Routes by Payment.orderId vs Payment.jobId. Order payments cascade to all
  * child jobs in one transaction; single-job payments preserve legacy behavior.
+ *
+ * Server-side verifies with Razorpay API before any DB mutation. Returns
+ * { payment, justPaid: false, notVerified: true } when Razorpay reports
+ * the payment is not actually captured.
  */
 async function handlePaymentSuccess(razorpayPaymentId, razorpayPaymentLinkId) {
   let payment;
@@ -267,6 +336,18 @@ async function handlePaymentSuccess(razorpayPaymentId, razorpayPaymentLinkId) {
 
   if (!payment) throw new Error('Payment record not found');
   if (payment.status === 'paid') return { payment, justPaid: false };
+
+  // Authoritative verification with Razorpay API
+  const verified = await verifyWithRazorpay(razorpayPaymentId, razorpayPaymentLinkId);
+  if (!verified.ok) {
+    console.warn('[payment] verification failed', {
+      razorpayPaymentId,
+      razorpayPaymentLinkId,
+      paymentId: payment.id,
+      razorpayStatus: verified.status,
+    });
+    return { payment, justPaid: false, notVerified: true, razorpayStatus: verified.status };
+  }
 
   // Atomic update: only succeeds if status is still 'pending' (prevents double-processing)
   const now = new Date();

@@ -72,6 +72,20 @@ function ThankYouContent() {
             setState('success');
             return;
           }
+
+          // Razorpay has not confirmed this payment yet — fall through to
+          // polling so we keep re-checking instead of falsely showing success.
+          if (res.status === 402 && data?.notPaid) {
+            setState('polling');
+            await pollJobStatus(jobId!);
+            return;
+          }
+
+          if (data?.error) {
+            setErrorMsg(data.error);
+            setState('error');
+            return;
+          }
         } catch {
           // Fall through to polling
         }

@@ -193,10 +193,22 @@ async function webhookRoutes(fastify) {
     }
 
     try {
-      const { payment, justPaid } = await paymentService.handlePaymentSuccess(
-        razorpay_payment_id,
-        razorpay_payment_link_id,
-      );
+      const { payment, justPaid, notVerified, razorpayStatus } =
+        await paymentService.handlePaymentSuccess(
+          razorpay_payment_id,
+          razorpay_payment_link_id,
+        );
+
+      // Razorpay's API says this payment is NOT actually captured. Don't show
+      // success — even if the redirect URL claimed status=paid.
+      if (notVerified) {
+        return reply.code(402).send({
+          ok: false,
+          notPaid: true,
+          razorpayStatus,
+          error: 'Razorpay has not confirmed this payment yet. If money was debited, your token will arrive automatically once the bank confirms. Otherwise please retry.',
+        });
+      }
 
       let token, shopName, fileName, status;
 
@@ -333,10 +345,20 @@ async function webhookRoutes(fastify) {
     }
 
     try {
-      const { payment, justPaid } = await paymentService.handlePaymentSuccess(
-        razorpay_payment_id,
-        razorpay_order_id,
-      );
+      const { payment, justPaid, notVerified, razorpayStatus } =
+        await paymentService.handlePaymentSuccess(
+          razorpay_payment_id,
+          razorpay_order_id,
+        );
+
+      if (notVerified) {
+        return reply.code(402).send({
+          ok: false,
+          notPaid: true,
+          razorpayStatus,
+          error: 'Razorpay has not confirmed this payment yet. If money was debited, your token will arrive once the bank confirms.',
+        });
+      }
 
       let token, shopName, fileName, status;
 
