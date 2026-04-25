@@ -167,7 +167,9 @@ async function jobRoutes(fastify) {
   });
 
   // POST /jobs/public — create job from public website checkout
-  fastify.post('/public', async (request, reply) => {
+  fastify.post('/public', {
+    config: { rateLimit: { max: 5, timeWindow: '1m' } },
+  }, async (request, reply) => {
     const { customerPhone, customerName } = request.body || {};
     const phone = normalizeCustomerPhone(customerPhone);
     const name = typeof customerName === 'string' ? customerName.trim().slice(0, 80) : '';

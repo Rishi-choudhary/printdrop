@@ -13,11 +13,11 @@ export interface CachedWebOrder {
 export const WEB_ORDER_STORAGE_KEY = 'printdrop.webOrders.v1';
 
 export const ORDER_PROGRESS_STEPS = [
-  'Your order is ready',
-  'Your order is printing',
-  'Your order is ready for pickup',
-  'Your order is picked up',
-  'Thank you for using PrintDrop',
+  'Order received',
+  'Printing in progress',
+  'Ready for pickup',
+  'Picked up',
+  'Thank you!',
 ] as const;
 
 export function getOrderProgressIndex(status?: string): number {
