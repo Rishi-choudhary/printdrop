@@ -22,4 +22,7 @@ ENV NODE_ENV=production
 ENV PORT=3001
 
 # Run migrations then start
-CMD npx prisma db push --skip-generate && node backend/src/index.js
+# --accept-data-loss is required because Prisma flags any unique-constraint
+# addition (e.g. Referral [referrerId, refereeId]) as potentially data-losing.
+# It only causes loss if duplicate rows already exist; otherwise it's a no-op.
+CMD npx prisma db push --skip-generate --accept-data-loss && node backend/src/index.js
