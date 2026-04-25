@@ -174,7 +174,7 @@ Copy `.env.example` to `.env` and fill in:
 | `R2_BUCKET_NAME` | `printdrop` | R2 bucket name |
 | `WHATSAPP_WEBHOOK_SECRET` | — | Token for webhook verification |
 | `RAZORPAY_WEBHOOK_SECRET` | — | HMAC secret for Razorpay webhooks |
-| `LIBREOFFICE_URL` | `http://localhost:3002` | DOCX→PDF conversion service |
+| `LIBREOFFICE_URL` | Railway internal LibreOffice URL | DOCX→PDF conversion service |
 | `MAX_FILE_SIZE_MB` | `50` | Max upload size |
 
 ---
@@ -182,7 +182,7 @@ Copy `.env.example` to `.env` and fill in:
 ## WhatsApp Setup (Gupshup)
 
 1. Create a Gupshup account and register your WhatsApp number
-2. Set the webhook URL to: `https://your-domain.com/api/webhooks/whatsapp`
+2. Set the webhook URL to: `https://api.printdrop.app/api/webhooks/whatsapp`
 3. Set the following env vars:
    ```
    WHATSAPP_API_URL=https://api.gupshup.io/wa/api/v1/msg
@@ -361,7 +361,7 @@ docker build -t printdrop-libreoffice .
 docker run -p 3002:3002 printdrop-libreoffice
 ```
 
-Set `LIBREOFFICE_URL=http://localhost:3002` in your `.env`.
+Set `LIBREOFFICE_URL=http://printdrop-libreoffice.railway.internal:3002` in production. For local Docker Compose, use the compose service URL.
 
 ---
 

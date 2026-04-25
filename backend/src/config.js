@@ -7,8 +7,8 @@ const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isDev: (process.env.NODE_ENV || 'development') === 'development',
 
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
-  apiUrl: process.env.API_URL || 'http://localhost:3001',
+  frontendUrl: process.env.FRONTEND_URL || 'https://printdrop.app',
+  apiUrl: process.env.API_URL || 'https://api.printdrop.app',
 
   jwtSecret: process.env.JWT_SECRET || 'change-this-secret',
 
@@ -60,7 +60,7 @@ const config = {
 
   // LibreOffice conversion service
   libreoffice: {
-    url: process.env.LIBREOFFICE_URL || 'http://localhost:3002',
+    url: process.env.LIBREOFFICE_URL || 'http://printdrop-libreoffice.railway.internal:3002',
   },
 
   upload: {

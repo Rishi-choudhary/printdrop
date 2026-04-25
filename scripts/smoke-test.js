@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * PrintDrop Smoke Test
- * Usage: node scripts/smoke-test.js [--base-url http://localhost:3001]
+ * Usage: node scripts/smoke-test.js [--base-url https://api.printdrop.app]
  *
  * Runs sequential API tests, passing state (session cookie, job IDs) between them.
  * Exits 0 on full pass, 1 if any test fails.
@@ -12,7 +12,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const args = process.argv.slice(2);
 const baseUrlIdx = args.indexOf('--base-url');
-const BASE_URL = baseUrlIdx !== -1 ? args[baseUrlIdx + 1] : 'http://localhost:3001';
+const BASE_URL = baseUrlIdx !== -1 ? args[baseUrlIdx + 1] : 'https://api.printdrop.app';
 
 const TEST_PHONE = process.env.SMOKE_TEST_PHONE || process.env.PRINTDROP_DEMO_SHOPKEEPER_PHONE || '+919876543210';
 const TEST_PIN = process.env.SMOKE_TEST_PIN || process.env.PRINTDROP_DEMO_SHOPKEEPER_PIN;

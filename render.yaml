@@ -41,7 +41,7 @@ services:
       - key: STORAGE_DRIVER
         value: r2
       - key: FRONTEND_URL
-        value: https://printdrop-dashboard.onrender.com
+        value: https://printdrop.app
       - key: API_URL
         value: https://api.printdrop.app
       - key: LIBREOFFICE_URL
@@ -67,7 +67,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        value: https://printdrop-api.onrender.com
+        value: https://api.printdrop.app
       - key: NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
         fromGroup: printdrop-secrets
 

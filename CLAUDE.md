@@ -42,7 +42,7 @@ Key variables:
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET`
 - `STORAGE_DRIVER` — `local` (dev) or `r2` (prod); R2 vars required if `r2`
 - `TELEGRAM_BOT_TOKEN` — optional; bot won't start if unset
-- `LIBREOFFICE_URL` — DOCX/PPTX conversion service (default `http://localhost:3002`)
+- `LIBREOFFICE_URL` — DOCX/PPTX conversion service (production uses Railway internal LibreOffice URL)
 - `GUPSHUP_TEMPLATE_TOKEN_ISSUED` — approved Gupshup template name for token notification (see below)
 - `GUPSHUP_TEMPLATE_READY_FOR_PICKUP` — approved Gupshup template name for ready notification
 - `BOT_V2=1` — enables the **experimental** lean 3-state WhatsApp bot (NOT for production)

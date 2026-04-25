@@ -31,7 +31,7 @@ async function createPaymentLink({ jobId, orderId, amount, customerPhone, custom
   const rz = getRazorpay();
   const isOrder = !!orderId;
   const appCheckoutPath = isOrder ? `/pay/order/${orderId}` : `/pay/${jobId}`;
-  const appCheckoutLink = `${config.frontendUrl || 'http://localhost:3000'}${appCheckoutPath}`;
+  const appCheckoutLink = `${config.frontendUrl || 'https://printdrop.app'}${appCheckoutPath}`;
   const useHostedPaymentLinks = process.env.RAZORPAY_USE_HOSTED_LINKS === '1';
 
   let target;
@@ -116,7 +116,7 @@ async function createPaymentLink({ jobId, orderId, amount, customerPhone, custom
 
   if (!rz) {
     // No Razorpay keys configured — mock payment link via dashboard
-    const mockLink = `${config.frontendUrl || 'http://localhost:3000'}${mockPath}`;
+    const mockLink = `${config.frontendUrl || 'https://printdrop.app'}${mockPath}`;
     const payment = await prisma.payment.create({
       data: {
         ...(isOrder ? { orderId } : { jobId }),
