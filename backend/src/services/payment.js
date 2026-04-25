@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const Razorpay = require('razorpay');
 const config = require('../config');
 const prisma = require('./prisma');
+const { timingSafeEqualHex } = require('../utils/request');
 
 let razorpay = null;
 function getRazorpay() {
@@ -15,39 +16,94 @@ function getRazorpay() {
 }
 
 /**
- * Create a Razorpay payment link for a job.
+ * Create a Razorpay payment link for a Job or an Order.
+ *
+ * Pass exactly one of jobId or orderId. The webhook handler routes payment
+ * success / failure based on which field is set on the Payment record.
+ *
+ * Idempotent: if a pending payment link already exists for the target, returns it.
  * Falls back to mock in dev mode (no Razorpay keys).
  */
-async function createPaymentLink({ jobId, amount, customerPhone, customerName, description }) {
+async function createPaymentLink({ jobId, orderId, amount, customerPhone, customerName, description }) {
+  if (!jobId && !orderId) throw new Error('jobId or orderId is required');
+  if (jobId && orderId) throw new Error('Pass jobId OR orderId, not both');
+
   const rz = getRazorpay();
-  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  const isOrder = !!orderId;
+
+  let target;
+  if (isOrder) {
+    target = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!target) throw new Error('Order not found');
+    if (target.status !== 'pending' && target.status !== 'payment_pending') {
+      throw new Error(`Cannot create payment link for order in ${target.status} status`);
+    }
+  } else {
+    target = await prisma.job.findUnique({ where: { id: jobId } });
+    if (!target) throw new Error('Job not found');
+    if (target.status !== 'pending' && target.status !== 'payment_pending') {
+      throw new Error(`Cannot create payment link for job in ${target.status} status`);
+    }
+  }
+
+  // Idempotency: return existing payment link for this target if any
+  const existingPayment = isOrder
+    ? await prisma.payment.findUnique({ where: { orderId } })
+    : await prisma.payment.findUnique({ where: { jobId } });
+  if (existingPayment?.razorpayPaymentLink) {
+    return {
+      paymentLink: existingPayment.razorpayPaymentLink,
+      paymentId: existingPayment.id,
+      mock: existingPayment.razorpayOrderId?.startsWith('mock_') ?? false,
+      existing: true,
+      status: existingPayment.status,
+    };
+  }
+
+  const mockPath = isOrder ? `/pay/order/${orderId}` : `/pay/${jobId}`;
+  const callbackQs = isOrder ? `order_id=${orderId}` : `job_id=${jobId}`;
 
   if (!rz) {
     // No Razorpay keys configured — mock payment link via dashboard
-    const mockLink = `${config.frontendUrl || 'http://localhost:3000'}/pay/${jobId}`;
+    const mockLink = `${config.frontendUrl || 'http://localhost:3000'}${mockPath}`;
     const payment = await prisma.payment.create({
       data: {
-        jobId,
+        ...(isOrder ? { orderId } : { jobId }),
         amount,
         currency: 'INR',
         razorpayPaymentLink: mockLink,
         razorpayOrderId: `mock_order_${Date.now()}`,
         status: 'pending',
-        userId: job?.userId,
+        userId: target?.userId,
       },
     });
 
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: 'payment_pending' },
-    });
+    if (isOrder) {
+      await prisma.order.updateMany({
+        where: { id: orderId, status: 'pending' },
+        data: { status: 'payment_pending' },
+      });
+      await prisma.job.updateMany({
+        where: { orderId, status: 'pending' },
+        data: { status: 'payment_pending' },
+      });
+    } else {
+      await prisma.job.updateMany({
+        where: { id: jobId, status: 'pending' },
+        data: { status: 'payment_pending' },
+      });
+    }
 
     return { paymentLink: mockLink, paymentId: payment.id, mock: true };
   }
 
   // Production — real Razorpay payment link
-  // Telegram users have phone stored as "tg_<chatId>" — not a real phone number
-  const validPhone = customerPhone && !customerPhone.startsWith('tg_') ? customerPhone : '';
+  // Telegram users have phone stored as "tg_<chatId>" — not a real phone number.
+  // Razorpay expects phone WITHOUT leading + and in E.164 digits only.
+  const cleanPhone = (customerPhone || '').replace(/^\+/, '').trim();
+  const validPhone = cleanPhone && !/^tg_/.test(cleanPhone) && /^\d{10,15}$/.test(cleanPhone)
+    ? cleanPhone
+    : '';
 
   const buildLinkData = (phone) => ({
     amount: Math.round(amount * 100), // Razorpay uses paise
@@ -61,11 +117,11 @@ async function createPaymentLink({ jobId, amount, customerPhone, customerName, d
       sms: !!phone,
       email: false,
     },
-    callback_url: `${config.frontendUrl}/thankyou?job_id=${jobId}`,
+    callback_url: `${config.frontendUrl}/thankyou?${callbackQs}`,
     callback_method: 'get',
     expire_by: Math.floor(Date.now() / 1000) + 1800, // 30 min expiry
     notes: {
-      job_id: jobId,
+      ...(isOrder ? { order_id: orderId } : { job_id: jobId }),
       platform: 'printdrop',
     },
   });
@@ -85,20 +141,31 @@ async function createPaymentLink({ jobId, amount, customerPhone, customerName, d
 
   const payment = await prisma.payment.create({
     data: {
-      jobId,
+      ...(isOrder ? { orderId } : { jobId }),
       amount,
       currency: 'INR',
       razorpayOrderId: link.id,
       razorpayPaymentLink: link.short_url,
       status: 'pending',
-      userId: job?.userId,
+      userId: target?.userId,
     },
   });
 
-  await prisma.job.update({
-    where: { id: jobId },
-    data: { status: 'payment_pending' },
-  });
+  if (isOrder) {
+    await prisma.order.updateMany({
+      where: { id: orderId, status: 'pending' },
+      data: { status: 'payment_pending' },
+    });
+    await prisma.job.updateMany({
+      where: { orderId, status: 'pending' },
+      data: { status: 'payment_pending' },
+    });
+  } else {
+    await prisma.job.updateMany({
+      where: { id: jobId, status: 'pending' },
+      data: { status: 'payment_pending' },
+    });
+  }
 
   return { paymentLink: link.short_url, paymentId: payment.id, mock: false };
 }
@@ -119,11 +186,14 @@ function verifyWebhookSignature(rawBody, signature) {
     .createHmac('sha256', config.razorpay.webhookSecret)
     .update(rawBody)
     .digest('hex');
-  return expected === signature;
+  return timingSafeEqualHex(expected, signature);
 }
 
 /**
- * Handle successful payment — update payment + job status.
+ * Handle successful payment — update payment + job/order status.
+ *
+ * Routes by Payment.orderId vs Payment.jobId. Order payments cascade to all
+ * child jobs in one transaction; single-job payments preserve legacy behavior.
  */
 async function handlePaymentSuccess(razorpayPaymentId, razorpayPaymentLinkId) {
   let payment;
@@ -131,13 +201,13 @@ async function handlePaymentSuccess(razorpayPaymentId, razorpayPaymentLinkId) {
   if (razorpayPaymentLinkId) {
     payment = await prisma.payment.findFirst({
       where: { razorpayOrderId: razorpayPaymentLinkId },
-      include: { job: true },
+      include: { job: true, order: true },
     });
   }
   if (!payment && razorpayPaymentId) {
     payment = await prisma.payment.findFirst({
       where: { razorpayPaymentId },
-      include: { job: true },
+      include: { job: true, order: true },
     });
   }
 
@@ -158,10 +228,21 @@ async function handlePaymentSuccess(razorpayPaymentId, razorpayPaymentLinkId) {
   // Another caller already processed this payment
   if (count === 0) return { payment, justPaid: false };
 
-  await prisma.job.update({
-    where: { id: payment.jobId },
-    data: { status: 'queued', paidAt: now },
-  });
+  if (payment.orderId) {
+    await prisma.order.updateMany({
+      where: { id: payment.orderId, status: { in: ['pending', 'payment_pending'] } },
+      data: { status: 'queued', paidAt: now },
+    });
+    await prisma.job.updateMany({
+      where: { orderId: payment.orderId, status: { in: ['pending', 'payment_pending'] } },
+      data: { status: 'queued', paidAt: now },
+    });
+  } else if (payment.jobId) {
+    await prisma.job.updateMany({
+      where: { id: payment.jobId, status: { in: ['pending', 'payment_pending'] } },
+      data: { status: 'queued', paidAt: now },
+    });
+  }
 
   return { payment, justPaid: true };
 }
@@ -175,27 +256,40 @@ async function handlePaymentFailed(razorpayPaymentId, razorpayPaymentLinkId) {
   if (razorpayPaymentLinkId) {
     payment = await prisma.payment.findFirst({
       where: { razorpayOrderId: razorpayPaymentLinkId },
-      include: { job: true },
+      include: { job: true, order: true },
     });
   }
   if (!payment && razorpayPaymentId) {
     payment = await prisma.payment.findFirst({
       where: { razorpayPaymentId },
-      include: { job: true },
+      include: { job: true, order: true },
     });
   }
 
   if (!payment) return null;
 
-  await prisma.payment.update({
-    where: { id: payment.id },
+  const { count } = await prisma.payment.updateMany({
+    where: { id: payment.id, status: 'pending' },
     data: { status: 'failed', razorpayPaymentId },
   });
+  if (count === 0) return payment;
 
-  await prisma.job.update({
-    where: { id: payment.jobId },
-    data: { status: 'cancelled', cancelledAt: new Date() },
-  });
+  const now = new Date();
+  if (payment.orderId) {
+    await prisma.order.updateMany({
+      where: { id: payment.orderId, status: { in: ['pending', 'payment_pending'] } },
+      data: { status: 'cancelled', cancelledAt: now },
+    });
+    await prisma.job.updateMany({
+      where: { orderId: payment.orderId, status: { in: ['pending', 'payment_pending'] } },
+      data: { status: 'cancelled', cancelledAt: now },
+    });
+  } else if (payment.jobId) {
+    await prisma.job.updateMany({
+      where: { id: payment.jobId, status: { in: ['pending', 'payment_pending'] } },
+      data: { status: 'cancelled', cancelledAt: now },
+    });
+  }
 
   // Reset any conversation stuck in payment_pending for this user
   await resetUserConversation(payment.userId);
@@ -232,16 +326,17 @@ async function initiateRefund(jobId, reason) {
 
   if (!rz || !payment.razorpayPaymentId || payment.razorpayPaymentId.startsWith('mock_')) {
     // Dev mode mock refund
+    const refundId = `mock_refund_${Date.now()}`;
     await prisma.payment.update({
       where: { id: payment.id },
-      data: { status: 'refunded', refundId: `mock_refund_${Date.now()}` },
+      data: { status: 'refunded', refundId },
     });
     await prisma.job.update({
       where: { id: jobId },
       data: { status: 'cancelled', cancelledAt: new Date() },
     });
     await resetUserConversation(payment.userId);
-    return { refundId: `mock_refund_${Date.now()}`, mock: true };
+    return { refundId, mock: true };
   }
 
   // Real Razorpay refund
@@ -267,11 +362,138 @@ async function initiateRefund(jobId, reason) {
 }
 
 /**
+ * Create a Razorpay order for Standard Checkout (inline modal flow).
+ *
+ * Unlike createPaymentLink (hosted page), this creates a Razorpay order that
+ * the frontend opens via checkout.js. Signature is verified server-side in
+ * the /razorpay/verify-checkout route before marking the payment as paid.
+ *
+ * Idempotent: if a checkout order already exists for the target (razorpayOrderId
+ * starts with "order_"), returns it without creating a new one.
+ */
+async function createCheckoutOrder({ jobId, orderId }) {
+  if (!jobId && !orderId) throw new Error('jobId or orderId is required');
+  if (jobId && orderId) throw new Error('Pass jobId OR orderId, not both');
+
+  const rz = getRazorpay();
+  if (!rz) throw new Error('Razorpay not configured');
+
+  const isOrder = !!orderId;
+  let target;
+
+  if (isOrder) {
+    target = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!target) throw new Error('Order not found');
+    if (!['pending', 'payment_pending'].includes(target.status)) {
+      throw new Error(`Cannot create payment for order in ${target.status} status`);
+    }
+  } else {
+    target = await prisma.job.findUnique({ where: { id: jobId } });
+    if (!target) throw new Error('Job not found');
+    if (!['pending', 'payment_pending'].includes(target.status)) {
+      throw new Error(`Cannot create payment for job in ${target.status} status`);
+    }
+  }
+
+  const existingPayment = isOrder
+    ? await prisma.payment.findUnique({ where: { orderId } })
+    : await prisma.payment.findUnique({ where: { jobId } });
+
+  if (existingPayment?.status === 'paid') {
+    throw new Error('Payment already completed');
+  }
+
+  // Idempotency: reuse an existing Razorpay order (not a payment link)
+  if (existingPayment?.razorpayOrderId?.startsWith('order_')) {
+    return {
+      orderId: existingPayment.razorpayOrderId,
+      amount: Math.round(target.totalPrice * 100),
+      currency: 'INR',
+      keyId: config.razorpay.keyId,
+    };
+  }
+
+  const receiptId = isOrder ? `ord_${orderId.slice(-12)}` : `job_${jobId.slice(-12)}`;
+  const rzOrder = await rz.orders.create({
+    amount: Math.round(target.totalPrice * 100),
+    currency: 'INR',
+    receipt: receiptId,
+    notes: {
+      ...(isOrder ? { order_id: orderId } : { job_id: jobId }),
+      platform: 'printdrop',
+    },
+  });
+
+  if (existingPayment) {
+    // Overwrite payment link ID with the new Razorpay order ID so
+    // handlePaymentSuccess can locate this record by razorpayOrderId.
+    await prisma.payment.update({
+      where: { id: existingPayment.id },
+      data: { razorpayOrderId: rzOrder.id },
+    });
+  } else {
+    await prisma.payment.create({
+      data: {
+        ...(isOrder ? { orderId } : { jobId }),
+        amount: target.totalPrice,
+        currency: 'INR',
+        razorpayOrderId: rzOrder.id,
+        status: 'pending',
+        userId: target.userId,
+      },
+    });
+  }
+
+  if (isOrder) {
+    await prisma.order.updateMany({
+      where: { id: orderId, status: 'pending' },
+      data: { status: 'payment_pending' },
+    });
+    await prisma.job.updateMany({
+      where: { orderId, status: 'pending' },
+      data: { status: 'payment_pending' },
+    });
+  } else {
+    await prisma.job.updateMany({
+      where: { id: jobId, status: 'pending' },
+      data: { status: 'payment_pending' },
+    });
+  }
+
+  return {
+    orderId: rzOrder.id,
+    amount: rzOrder.amount,
+    currency: rzOrder.currency,
+    keyId: config.razorpay.keyId,
+  };
+}
+
+/**
  * Get payment status for a job.
  */
 async function getPaymentStatus(jobId) {
   const payment = await prisma.payment.findUnique({
     where: { jobId },
+  });
+  if (!payment) return null;
+
+  return {
+    id: payment.id,
+    status: payment.status,
+    amount: payment.amount,
+    currency: payment.currency,
+    paymentLink: payment.razorpayPaymentLink,
+    paidAt: payment.paidAt,
+    refundId: payment.refundId,
+  };
+}
+
+/**
+ * Get payment status for an order.
+ */
+async function getOrderPaymentStatus(orderId) {
+  const payment = await prisma.payment.findUnique({
+    where: { orderId },
   });
   if (!payment) return null;
 
@@ -331,10 +553,12 @@ async function checkAndProcessPaymentLink(jobId) {
 
 module.exports = {
   createPaymentLink,
+  createCheckoutOrder,
   verifyWebhookSignature,
   handlePaymentSuccess,
   handlePaymentFailed,
   checkAndProcessPaymentLink,
   initiateRefund,
   getPaymentStatus,
+  getOrderPaymentStatus,
 };
