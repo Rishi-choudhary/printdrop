@@ -102,17 +102,27 @@ async function webhookRoutes(fastify) {
 
         // Only notify if this call actually marked it paid (avoid double-notifying)
         if (payment && justPaid) {
-          const job = await fastify.prisma.job.findUnique({
-            where: { id: payment.jobId },
-            include: { shop: true },
-          });
-
-          if (job) {
-            // Use template-aware notification so this works even outside the 24h session window
-            notifyTokenIssued(job.userId, job.token, job.shop.name).catch(
-              (err) => console.error('[webhook] notifyTokenIssued failed:', err.message),
-            );
-            if (botV2.isEnabled()) botV2.clearSessionForJob(job.id).catch(() => {});
+          if (payment.jobId) {
+            const job = await fastify.prisma.job.findUnique({
+              where: { id: payment.jobId },
+              include: { shop: true },
+            });
+            if (job) {
+              notifyTokenIssued(job.userId, job.token, job.shop.name).catch(
+                (err) => console.error('[webhook] notifyTokenIssued failed:', err.message),
+              );
+              if (botV2.isEnabled()) botV2.clearSessionForJob(job.id).catch(() => {});
+            }
+          } else if (payment.orderId) {
+            const order = await fastify.prisma.order.findUnique({
+              where: { id: payment.orderId },
+              include: { jobs: { take: 1, include: { shop: true } } },
+            });
+            if (order && order.jobs[0]) {
+              notifyTokenIssued(order.userId, order.token, order.jobs[0].shop.name).catch(
+                (err) => console.error('[webhook] notifyTokenIssued (order) failed:', err.message),
+              );
+            }
           }
         }
       } else if (event === 'payment.failed' || event === 'payment_link.expired' || event === 'payment_link.cancelled') {
@@ -188,26 +198,43 @@ async function webhookRoutes(fastify) {
         razorpay_payment_link_id,
       );
 
-      const job = await fastify.prisma.job.findUnique({
-        where: { id: payment.jobId },
-        include: { shop: true },
-      });
+      let token, shopName, fileName, status;
 
-      // Send notification only if not already sent by the webhook
-      if (job && justPaid) {
-        await notifyTokenIssued(job.userId, job.token, job.shop.name).catch(
-          (err) => console.error('Notification error:', err),
-        );
-        if (botV2.isEnabled()) botV2.clearSessionForJob(job.id).catch(() => {});
+      if (payment.jobId) {
+        const job = await fastify.prisma.job.findUnique({
+          where: { id: payment.jobId },
+          include: { shop: true },
+        });
+        if (job) {
+          token = job.token;
+          shopName = job.shop?.name;
+          fileName = job.fileName;
+          status = job.status;
+          if (justPaid) {
+            await notifyTokenIssued(job.userId, job.token, job.shop.name).catch(
+              (err) => console.error('Notification error:', err),
+            );
+            if (botV2.isEnabled()) botV2.clearSessionForJob(job.id).catch(() => {});
+          }
+        }
+      } else if (payment.orderId) {
+        const order = await fastify.prisma.order.findUnique({
+          where: { id: payment.orderId },
+          include: { jobs: { take: 1, include: { shop: true } } },
+        });
+        if (order) {
+          token = order.token;
+          shopName = order.jobs[0]?.shop?.name;
+          status = order.status;
+          if (justPaid && order.jobs[0]) {
+            await notifyTokenIssued(order.userId, order.token, order.jobs[0].shop.name).catch(
+              (err) => console.error('Notification error:', err),
+            );
+          }
+        }
       }
 
-      return {
-        ok: true,
-        token: job?.token,
-        shopName: job?.shop?.name,
-        fileName: job?.fileName,
-        status: job?.status,
-      };
+      return { ok: true, token, shopName, fileName, status };
     } catch (err) {
       console.error('Razorpay callback error:', err);
       return reply.code(500).send({ error: err.message });
