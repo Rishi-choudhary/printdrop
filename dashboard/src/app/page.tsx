@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import {
-  Printer, ArrowRight, Store, Upload, CreditCard, Ticket,
+  Printer, ArrowRight, Upload, CreditCard, Ticket,
   CheckCircle2, LayoutDashboard, TrendingUp, Zap, Menu, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 import { getSafeExternalUrl } from '@/lib/security';
+import { RecentWebOrders } from '@/components/recent-web-orders';
 
 /* ─── WhatsApp order CTA ────────────────────────────────────────────────── */
 function WhatsAppOrderButton() {
@@ -28,6 +29,17 @@ function WhatsAppOrderButton() {
       <Upload className="w-4 h-4" />
       Print on WhatsApp
     </Button>
+  );
+}
+
+function WebsiteOrderButton() {
+  return (
+    <Link href="/print">
+      <Button size="xl" className="rounded-full">
+        <Upload className="w-4 h-4" />
+        Upload on Website
+      </Button>
+    </Link>
   );
 }
 
@@ -85,7 +97,7 @@ function MarketingNav() {
               scrolled ? 'text-muted-foreground hover:text-foreground' : 'text-white/80 hover:text-white',
             ].join(' ')}
           >
-            Shopkeeper Login
+            Shopkeeper portal
           </Link>
         </div>
 
@@ -113,8 +125,11 @@ function MarketingNav() {
               </a>
             ))}
             <div className="flex flex-col gap-2 pt-2 border-t border-border">
+              <Link href="/print" onClick={() => setOpen(false)}>
+                <Button size="sm" className="w-full">Upload PDF</Button>
+              </Link>
               <Link href="/login" onClick={() => setOpen(false)}>
-                <Button variant="outline" size="sm" className="w-full">Shopkeeper Login</Button>
+                <Button variant="outline" size="sm" className="w-full">Shopkeeper portal</Button>
               </Link>
             </div>
           </div>
@@ -158,19 +173,17 @@ function Hero() {
             </h1>
 
             <p className="text-lg text-white/60 leading-relaxed mb-8 max-w-md">
-              Send a PDF on WhatsApp. We handle the queue, the payment, and the token.
+              Upload on the website or send a PDF on WhatsApp. We handle the queue, the payment, and the token.
               No standing in line. No haggling over the price.
             </p>
 
             <div className="flex flex-wrap gap-3">
+              <WebsiteOrderButton />
               <WhatsAppOrderButton />
-              <Link href="/login">
-                <Button size="xl" variant="ghost-white" className="rounded-full border border-white/20">
-                  <Store className="w-4 h-4" />
-                  Shopkeeper Login
-                </Button>
-              </Link>
             </div>
+            <Link href="/login" className="mt-4 inline-flex text-sm font-medium text-white/55 hover:text-white transition-colors">
+              Shopkeeper partner portal
+            </Link>
           </div>
 
           {/* Right — product mock */}
@@ -236,8 +249,8 @@ function HeroMock() {
 
       {/* WhatsApp chat bubble */}
       <div className="absolute -bottom-6 -left-8 bg-[#25D366] text-white text-xs font-medium rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-xl max-w-[180px]">
-        📎 Sent: marksheet.pdf
-        <div className="text-[10px] text-white/70 mt-0.5">Tap to choose print options →</div>
+        Website + WhatsApp orders land here
+        <div className="text-[10px] text-white/70 mt-0.5">One queue for every channel</div>
       </div>
     </div>
   );
@@ -252,7 +265,7 @@ function TrustBar() {
         <span className="hidden sm:block text-border">|</span>
         <span>✓ No setup fees</span>
         <span className="hidden sm:block text-border">|</span>
-        <span>✓ Works on WhatsApp &amp; Telegram</span>
+        <span>✓ Website, WhatsApp &amp; Telegram orders</span>
         <span className="hidden sm:block text-border">|</span>
         <span>✓ Razorpay-secured payments</span>
       </div>
@@ -296,7 +309,7 @@ function ProblemSolution() {
           <p className="text-xs font-semibold uppercase tracking-widest text-green-600 mb-5">With PrintDrop</p>
           <ul className="space-y-3">
             {[
-              'Send file on WhatsApp from wherever you are',
+              'Upload on the website or send file on WhatsApp',
               'Pick options and pay in under 2 minutes',
               'See the price before you commit',
               'UPI / card / wallet. Instant receipt.',
@@ -653,6 +666,7 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <MarketingNav />
       <Hero />
+      <RecentWebOrders className="-mt-10 relative z-10 pb-12" />
       <TrustBar />
       <ProblemSolution />
       <HowItWorks />

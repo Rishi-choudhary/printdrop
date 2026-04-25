@@ -35,16 +35,7 @@ async function fileRoutes(fastify) {
     return { job };
   }
 
-  /**
-   * POST /api/files/upload
-   * Auth: any logged-in user
-   * Body: multipart/form-data  field name = "file"
-   * Returns: { fileUrl, fileName, fileSize, fileType, pageCount, key, driver }
-   */
-  fastify.post('/upload', {
-    preHandler: [authenticate],
-    config: { rateLimit: { max: 20, timeWindow: '1m' } },
-  }, async (request, reply) => {
+  async function handleUpload(request, reply) {
     // Pull the first part from the multipart stream
     let data;
     try {
@@ -103,7 +94,28 @@ async function fileRoutes(fastify) {
       pageCount,
       driver:    storage.driver,   // "r2" or "local" — useful for debugging
     });
-  });
+  }
+
+  /**
+   * POST /api/files/upload
+   * Auth: any logged-in user
+   * Body: multipart/form-data  field name = "file"
+   * Returns: { fileUrl, fileName, fileSize, fileType, pageCount, key, driver }
+   */
+  fastify.post('/upload', {
+    preHandler: [authenticate],
+    config: { rateLimit: { max: 20, timeWindow: '1m' } },
+  }, handleUpload);
+
+  /**
+   * POST /api/files/public-upload
+   * Auth: public web checkout.
+   * The uploaded key must still be attached to a paid job before shops/agents
+   * can retrieve a refreshed signed URL.
+   */
+  fastify.post('/public-upload', {
+    config: { rateLimit: { max: 10, timeWindow: '1m' } },
+  }, handleUpload);
 
   /**
    * GET /api/files/presign?key=uploads/foo_abc123.pdf

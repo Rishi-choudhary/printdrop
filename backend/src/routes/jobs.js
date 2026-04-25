@@ -6,7 +6,7 @@ const messages = require('../bot/messages');
 const { parseInteger, isAuthorizedForJob, isValidStorageKey } = require('../utils/request');
 
 const JOB_STATUSES = new Set(['pending', 'payment_pending', 'queued', 'printing', 'ready', 'picked_up', 'cancelled']);
-const PAPER_SIZES = new Set(['A4', 'A3', 'Legal']);
+const PAPER_SIZES = new Set(['A4', 'A3', 'Letter', 'Legal']);
 const BINDINGS = new Set(['none', 'staple', 'spiral']);
 
 function toBoolean(value, defaultValue = false) {
@@ -14,6 +14,41 @@ function toBoolean(value, defaultValue = false) {
   if (value === 'true') return true;
   if (value === 'false') return false;
   return defaultValue;
+}
+
+function normalizeCustomerPhone(value) {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.replace(/[^\d+]/g, '');
+  const digits = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned;
+  if (!cleaned.startsWith('+') && digits.length === 10) return `+91${digits}`;
+  if (!/^\d{10,15}$/.test(digits)) return null;
+  return `+${digits}`;
+}
+
+function buildReferralCode(phone) {
+  return `REF${phone.slice(-6)}${Date.now().toString(36).slice(-4)}`.toUpperCase();
+}
+
+async function findOrCreateCustomer(prisma, { phone, name }) {
+  let user = await prisma.user.findUnique({ where: { phone } });
+  if (user) {
+    if (name && !user.name) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { name },
+      });
+    }
+    return user;
+  }
+
+  return prisma.user.create({
+    data: {
+      phone,
+      name: name || 'Customer',
+      role: 'customer',
+      referralCode: buildReferralCode(phone),
+    },
+  });
 }
 
 function validateJobInput(body) {
@@ -129,6 +164,48 @@ async function jobRoutes(fastify) {
     });
 
     return reply.code(201).send({ job, pricing });
+  });
+
+  // POST /jobs/public — create job from public website checkout
+  fastify.post('/public', async (request, reply) => {
+    const { customerPhone, customerName } = request.body || {};
+    const phone = normalizeCustomerPhone(customerPhone);
+    const name = typeof customerName === 'string' ? customerName.trim().slice(0, 80) : '';
+
+    if (!phone) {
+      return reply.code(400).send({ error: 'A valid customer phone number is required' });
+    }
+
+    const { errors, value } = validateJobInput(request.body || {});
+    if (errors.length > 0) {
+      return reply.code(400).send({ error: errors.join(', ') });
+    }
+
+    try {
+      const user = await findOrCreateCustomer(fastify.prisma, { phone, name });
+      const { job, pricing } = await jobService.createJob({
+        userId: user.id,
+        ...value,
+        source: 'web',
+      });
+
+      const payment = await paymentService.createPaymentLink({
+        jobId: job.id,
+        amount: job.totalPrice,
+        customerPhone: user.phone,
+        customerName: user.name || 'Customer',
+        description: `PrintDrop #${String(job.token).padStart(3, '0')} at ${job.shop?.name}`,
+      });
+
+      return reply.code(201).send({ job, pricing, ...payment });
+    } catch (err) {
+      request.log.error({ err }, 'Public job creation failed');
+      const message = err.message || 'Failed to create print job';
+      if (message.includes('Shop not found')) {
+        return reply.code(404).send({ error: message });
+      }
+      return reply.code(400).send({ error: message });
+    }
   });
 
   // PATCH /jobs/:id/status — update status (shopkeeper or admin)

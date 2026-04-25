@@ -1,20 +1,23 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { useShops } from '@/lib/hooks';
 import { api } from '@/lib/api';
-import { encodePathSegment, getSafePaymentUrl } from '@/lib/security';
+import { encodePathSegment, getSafeExternalUrl, getSafePaymentUrl } from '@/lib/security';
 import { Navbar } from '@/components/navbar';
 import { FileUpload, UploadedFileMeta } from '@/components/file-upload';
 import { Card, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { upsertCachedWebOrder } from '@/lib/web-orders';
 import {
   Printer, FileText, Palette, Copy, Layers, Maximize,
   MapPin, Clock, IndianRupee, ChevronRight, Loader2,
-  Check, ArrowLeft, Scissors, BookOpen,
+  Check, ArrowLeft, Scissors, BookOpen, MessageCircle,
+  Phone, UserRound, Home,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,12 +42,18 @@ interface Prefs {
   binding: string;
 }
 
-type Step = 'upload' | 'preferences' | 'shop' | 'review';
+interface CustomerDetails {
+  name: string;
+  phone: string;
+}
+
+type Step = 'upload' | 'preferences' | 'shop' | 'contact' | 'review';
 
 const STEPS: { key: Step; label: string }[] = [
   { key: 'upload',      label: 'Upload' },
   { key: 'preferences', label: 'Options' },
   { key: 'shop',        label: 'Shop' },
+  { key: 'contact',     label: 'Contact' },
   { key: 'review',      label: 'Review' },
 ];
 
@@ -60,16 +69,16 @@ export default function PrintPage() {
     color: false, copies: 1, doubleSided: false,
     paperSize: 'A4', pageRange: 'all', binding: 'none',
   });
+  const [customer, setCustomer] = useState<CustomerDetails>({ name: '', phone: '' });
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
   const [submitting, setSubmitting]     = useState(false);
   const [error, setError]               = useState('');
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) router.push('/login');
-  }, [authLoading, user, router]);
-
   const shopList: Shop[] = Array.isArray(shops) ? shops : [];
+  const steps = useMemo(
+    () => user ? STEPS.filter(s => s.key !== 'contact') : STEPS,
+    [user],
+  );
 
   // ── Price estimate ──────────────────────────────────────────────
   const priceEstimate = useMemo(() => {
@@ -84,11 +93,11 @@ export default function PrintPage() {
 
   // ── Submit ──────────────────────────────────────────────────────
   const submit = async () => {
-    if (!file || !selectedShop || !user) return;
+    if (!file || !selectedShop) return;
     setSubmitting(true);
     setError('');
     try {
-      const { job } = await api.post('/jobs', {
+      const payload = {
         shopId:      selectedShop.id,
         fileUrl:     file.fileUrl,
         fileKey:     file.fileKey,
@@ -102,17 +111,48 @@ export default function PrintPage() {
         paperSize:   prefs.paperSize,
         pageRange:   prefs.pageRange,
         binding:     prefs.binding,
-      });
+      };
 
-      // Create payment link
-      const { paymentLink } = await api.post(`/jobs/${encodePathSegment(job.id)}/pay`, {});
+      let jobId = '';
+      let paymentLink: unknown = '';
+
+      if (user) {
+        const { job } = await api.post('/jobs', payload);
+        jobId = job.id;
+        upsertCachedWebOrder({
+          jobId,
+          token: job.token,
+          shopName: job.shop?.name || selectedShop.name,
+          fileName: job.fileName,
+          status: job.status,
+        });
+
+        // Create payment link
+        const payment = await api.post(`/jobs/${encodePathSegment(job.id)}/pay`, {});
+        paymentLink = payment.paymentLink;
+      } else {
+        const result = await api.post('/jobs/public', {
+          ...payload,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+        });
+        jobId = result.job.id;
+        paymentLink = result.paymentLink;
+        upsertCachedWebOrder({
+          jobId,
+          token: result.job.token,
+          shopName: result.job.shop?.name || selectedShop.name,
+          fileName: result.job.fileName,
+          status: result.job.status,
+        });
+      }
 
       // Redirect to payment
       const safePaymentLink = getSafePaymentUrl(paymentLink);
       if (safePaymentLink) {
         window.location.assign(safePaymentLink);
       } else {
-        router.push(`/pay/${encodePathSegment(job.id)}`);
+        router.push(`/pay/${encodePathSegment(jobId)}`);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to create print job');
@@ -125,27 +165,27 @@ export default function PrintPage() {
     if (step === 'upload') return !!file;
     if (step === 'preferences') return prefs.copies >= 1;
     if (step === 'shop') return !!selectedShop;
+    if (step === 'contact') return isValidPhone(customer.phone);
     return true;
   };
 
   const next = () => {
-    const idx = STEPS.findIndex(s => s.key === step);
-    if (idx < STEPS.length - 1) setStep(STEPS[idx + 1].key);
+    const idx = steps.findIndex(s => s.key === step);
+    if (idx < steps.length - 1) setStep(steps[idx + 1].key);
   };
   const back = () => {
-    const idx = STEPS.findIndex(s => s.key === step);
-    if (idx > 0) setStep(STEPS[idx - 1].key);
+    const idx = steps.findIndex(s => s.key === step);
+    if (idx > 0) setStep(steps[idx - 1].key);
   };
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading…</div>;
-  if (!user) return null;
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
+      {user ? <Navbar /> : <PublicPrintHeader />}
       <div className="max-w-2xl mx-auto px-4 py-6 pb-28">
         {/* Progress bar */}
-        <StepBar steps={STEPS} current={step} />
+        <StepBar steps={steps} current={step} />
 
         {/* ── Step 1: Upload ── */}
         {step === 'upload' && (
@@ -157,6 +197,7 @@ export default function PrintPage() {
             <FileUpload
               onUploaded={setFile}
               onClear={() => setFile(null)}
+              uploadUrl={user ? '/api/files/upload' : '/api/files/public-upload'}
             />
             {file && (
               <Card>
@@ -336,6 +377,50 @@ export default function PrintPage() {
           </section>
         )}
 
+        {/* ── Step 4: Contact ── */}
+        {step === 'contact' && !user && (
+          <section className="mt-6 space-y-4">
+            <div>
+              <h2 className="text-xl font-bold">Where should we send your token?</h2>
+              <p className="text-sm text-gray-500 mt-1">Use your WhatsApp number so the shop can notify you when it is ready.</p>
+            </div>
+
+            <Card>
+              <CardBody className="space-y-4">
+                <label className="block">
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1.5">
+                    <UserRound className="w-4 h-4 text-gray-400" />
+                    Name
+                  </span>
+                  <input
+                    type="text"
+                    value={customer.name}
+                    onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
+                    placeholder="Your name"
+                    maxLength={80}
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-1.5">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    WhatsApp number
+                  </span>
+                  <input
+                    type="tel"
+                    value={customer.phone}
+                    onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))}
+                    placeholder="+91 98765 43210"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+                  />
+                  <p className="text-xs text-gray-400 mt-1.5">Include country code if you are outside India.</p>
+                </label>
+              </CardBody>
+            </Card>
+          </section>
+        )}
+
         {/* ── Step 4: Review & Pay ── */}
         {step === 'review' && file && selectedShop && (
           <section className="mt-6 space-y-4">
@@ -381,6 +466,20 @@ export default function PrintPage() {
               </CardBody>
             </Card>
 
+            {!user && (
+              <Card>
+                <CardBody className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                    <MessageCircle className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{customer.name.trim() || 'Customer'}</p>
+                    <p className="text-xs text-gray-500">{customer.phone}</p>
+                  </div>
+                </CardBody>
+              </Card>
+            )}
+
             {/* Pricing */}
             {priceEstimate && (
               <Card>
@@ -421,7 +520,7 @@ export default function PrintPage() {
             </Button>
           )}
 
-          {step !== 'review' ? (
+          {step !== steps[steps.length - 1].key ? (
             <Button
               onClick={next}
               disabled={!canNext()}
@@ -455,6 +554,44 @@ export default function PrintPage() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function PublicPrintHeader() {
+  const whatsappUrl = getSafeExternalUrl(process.env.NEXT_PUBLIC_WHATSAPP_ORDER_URL);
+
+  return (
+    <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-gray-200">
+      <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2 font-semibold text-[15px]">
+          <span className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+            <Printer className="w-4 h-4 text-white" />
+          </span>
+          PrintDrop
+        </Link>
+
+        <div className="flex items-center gap-2">
+          {whatsappUrl && (
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2 hover:bg-green-100"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              WhatsApp
+            </a>
+          )}
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-100"
+          >
+            <Home className="w-3.5 h-3.5" />
+            Home
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
 
 function StepBar({ steps, current }: { steps: typeof STEPS; current: Step }) {
   const currentIdx = steps.findIndex(s => s.key === current);
@@ -516,6 +653,12 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
       <span className="font-medium text-gray-700">{value}</span>
     </div>
   );
+}
+
+function isValidPhone(value: string): boolean {
+  const cleaned = value.replace(/[^\d+]/g, '');
+  const digits = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned;
+  return /^\d{10,15}$/.test(digits);
 }
 
 function estimatePageCount(range: string, total: number): number {

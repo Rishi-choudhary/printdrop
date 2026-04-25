@@ -70,9 +70,9 @@ export default function ContactPage() {
                 },
                 {
                   icon: <Store className="w-4 h-4" />,
-                  label: 'Register a shop',
-                  value: 'Takes 2 minutes →',
-                  href: '/login',
+                  label: 'Print from web',
+                  value: 'Upload a PDF →',
+                  href: '/print',
                 },
               ].map(item => (
                 <a

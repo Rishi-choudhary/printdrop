@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import Script from 'next/script';
 import Link from 'next/link';
 import { Card, CardBody } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, CreditCard, IndianRupee, FileText, Printer, Loader2, Home } from 'lucide-react';
 import { encodePathSegment, getSafePaymentUrl } from '@/lib/security';
+import { OrderProgress } from '@/components/order-progress';
+import { getOrderStatusLabel, upsertCachedWebOrder } from '@/lib/web-orders';
 
 declare global {
   interface Window {
@@ -27,6 +28,17 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
   const [paid, setPaid] = useState(false);
   const [error, setError] = useState('');
 
+  const cacheOrder = (nextJob: any) => {
+    if (!nextJob) return;
+    upsertCachedWebOrder({
+      jobId,
+      token: nextJob.token,
+      shopName: nextJob.shop?.name || nextJob.shopName,
+      fileName: nextJob.fileName,
+      status: nextJob.status,
+    });
+  };
+
   useEffect(() => {
     async function load() {
       try {
@@ -40,6 +52,7 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
         }
 
         setJob(data);
+        cacheOrder(data);
 
         if (['queued', 'printing', 'ready', 'picked_up'].includes(data.status)) {
           setPaid(true);
@@ -53,6 +66,24 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
     }
     load();
   }, [jobId]);
+
+  useEffect(() => {
+    if (!paid) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const r = await fetch(`/api/webhooks/razorpay/job/${encodePathSegment(jobId)}`, { cache: 'no-store' });
+        const data = await r.json();
+        if (r.ok) {
+          setJob(data);
+          cacheOrder(data);
+        }
+      } catch {
+        // ignore refresh failures
+      }
+    }, 10000);
+    return () => window.clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, paid]);
 
   const handlePay = async () => {
     setPaying(true);
@@ -98,12 +129,14 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
               });
               const result = await verifyRes.json();
               if (verifyRes.ok && result.ok) {
-                setJob((prev: any) => ({
-                  ...prev,
-                  token: result.token ?? prev?.token,
+                const nextJob = {
+                  ...job,
+                  token: result.token ?? job?.token,
                   status: result.status ?? 'queued',
-                  shop: { name: result.shopName ?? prev?.shop?.name },
-                }));
+                  shop: { name: result.shopName ?? job?.shop?.name },
+                };
+                setJob(nextJob);
+                cacheOrder(nextJob);
                 setPaid(true);
               } else {
                 setError(result.error || 'Payment verification failed. Please do not retry if money was debited; your token will arrive once Razorpay confirms it.');
@@ -174,6 +207,7 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
         const data = await r.json();
         if (r.ok && data.token) {
           setJob(data);
+          cacheOrder(data);
           setPaid(true);
           setPaying(false);
           return;
@@ -218,26 +252,28 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
           <CardBody className="p-6">
             {paid ? (
               /* Success State */
-              <div className="text-center py-6">
+              <div className="py-4 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                   <CheckCircle className="w-8 h-8 text-green-600" />
                 </div>
                 <h2 className="text-xl font-bold text-green-700 mb-2">Payment Successful!</h2>
-                <p className="text-gray-500 mb-4">Your print job is now in the queue.</p>
+                <p className="text-gray-500 mb-4">Your print job is confirmed.</p>
 
                 {job && (
-                  <div className="bg-gray-50 rounded-lg p-4 text-left space-y-2">
+                  <div className="bg-gray-50 rounded-lg p-4 text-left space-y-3">
                     <div className="text-center mb-3">
                       <span className="text-4xl font-bold text-blue-600">#{String(job.token).padStart(3, '0')}</span>
                       <p className="text-xs text-gray-500 mt-1">Your Token Number</p>
                     </div>
                     <p className="text-sm"><span className="text-gray-500">Shop:</span> {job.shop?.name || job.shopName}</p>
                     <p className="text-sm"><span className="text-gray-500">File:</span> {job.fileName}</p>
-                    <p className="text-sm"><span className="text-gray-500">Status:</span> <Badge status={job.status || 'queued'} /></p>
+                    <p className="text-sm"><span className="text-gray-500">Status:</span> {getOrderStatusLabel(job.status || 'queued')}</p>
                   </div>
                 )}
 
-                <p className="text-xs text-gray-400 mt-4">Show this token at the shop. You&apos;ll get a notification when your print is ready.</p>
+                <OrderProgress status={job?.status || 'queued'} className="mt-5" />
+
+                <p className="text-xs text-gray-400 mt-4 text-center">Show this token at the shop. This page will update while it is open.</p>
 
                 <Link href="/" className="block mt-4">
                   <Button variant="secondary" className="w-full">

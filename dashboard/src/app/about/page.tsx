@@ -108,15 +108,15 @@ export default function AboutPage() {
 
         {/* CTA */}
         <div className="rounded-2xl bg-primary p-8 text-white text-center">
-          <h2 className="text-2xl font-semibold mb-3">Want to bring PrintDrop to your shop?</h2>
+          <h2 className="text-2xl font-semibold mb-3">Ready to print from the website?</h2>
           <p className="text-white/70 mb-6 text-sm max-w-md mx-auto">
-            Setup takes minutes. No hardware, no upfront cost.
+            Upload your PDF, choose a nearby shop, pay online, and keep your token on this browser.
           </p>
           <Link
-            href="/login"
+            href="/print"
             className="inline-flex items-center gap-2 bg-white text-primary px-6 py-3 rounded-full font-medium text-sm hover:bg-white/90 transition-colors"
           >
-            Register your shop
+            Upload a PDF
           </Link>
         </div>
       </main>

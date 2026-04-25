@@ -16,7 +16,7 @@ import { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
 // Use the same-origin proxy so the browser sends the HttpOnly session cookie.
-const UPLOAD_URL = '/api/files/upload';
+const DEFAULT_UPLOAD_URL = '/api/files/upload';
 
 const ACCEPTED = ['application/pdf', 'image/jpeg', 'image/png',
   'application/msword',
@@ -44,11 +44,12 @@ interface Props {
   onClear?:    () => void;
   disabled?:   boolean;
   className?:  string;
+  uploadUrl?:  string;
 }
 
 type UploadState = 'idle' | 'uploading' | 'done' | 'error';
 
-export function FileUpload({ onUploaded, onClear, disabled, className = '' }: Props) {
+export function FileUpload({ onUploaded, onClear, disabled, className = '', uploadUrl = DEFAULT_UPLOAD_URL }: Props) {
   const [state,    setState]    = useState<UploadState>('idle');
   const [progress, setProgress] = useState(0);
   const [result,   setResult]   = useState<UploadedFileMeta | null>(null);
@@ -115,7 +116,7 @@ export function FileUpload({ onUploaded, onClear, disabled, className = '' }: Pr
       xhr.addEventListener('error',   () => reject(new Error('Network error. Check your connection.')));
       xhr.addEventListener('timeout', () => reject(new Error('Upload timed out. Try a smaller file.')));
 
-      xhr.open('POST', UPLOAD_URL);
+      xhr.open('POST', uploadUrl);
       xhr.withCredentials = true;
       xhr.timeout = 120_000; // 2 min
       xhr.send(formData);

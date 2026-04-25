@@ -1,8 +1,7 @@
-const CACHE_NAME = 'printdrop-v1';
+const CACHE_NAME = 'printdrop-v2';
 const STATIC_ASSETS = [
   '/',
-  '/login',
-  '/dashboard',
+  '/print',
   '/manifest.json',
 ];
 
@@ -29,7 +28,14 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
 
   // Skip non-GET and API calls
-  if (request.method !== 'GET' || request.url.includes('/api/')) {
+  const url = new URL(request.url);
+  if (
+    request.method !== 'GET' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/login') ||
+    url.pathname.startsWith('/dashboard') ||
+    url.pathname.startsWith('/admin')
+  ) {
     return;
   }
 

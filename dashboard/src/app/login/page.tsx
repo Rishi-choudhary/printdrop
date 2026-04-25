@@ -155,14 +155,22 @@ export default function LoginPage() {
 
           <p className="text-xs text-center text-muted-foreground">
             Not a shop partner?{' '}
-            <a
-              href={whatsappOrderUrl || '#'}
-              target={whatsappOrderUrl ? '_blank' : undefined}
-              rel={whatsappOrderUrl ? 'noopener noreferrer' : undefined}
-              className="underline underline-offset-2 hover:text-foreground transition-colors"
-            >
-              Order via WhatsApp
-            </a>
+            <Link href="/print" className="underline underline-offset-2 hover:text-foreground transition-colors">
+              Upload on website
+            </Link>
+            {whatsappOrderUrl ? (
+              <>
+                {' '}or{' '}
+                <a
+                  href={whatsappOrderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-foreground transition-colors"
+                >
+                  use WhatsApp
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
       </div>
