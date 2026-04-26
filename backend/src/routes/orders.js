@@ -72,14 +72,13 @@ async function orderRoutes(fastify) {
     const shop = await fastify.prisma.shop.findUnique({ where: { id: shopId } });
     if (!shop || !shop.isActive) return reply.code(404).send({ error: 'Shop not found or inactive' });
 
-    // Find or create guest user by phone
+    // Find or create guest user by phone (upsert avoids race condition on concurrent requests)
     const normalizedPhone = customerPhone.replace(/\s+/g, '');
-    let user = await fastify.prisma.user.findUnique({ where: { phone: normalizedPhone } });
-    if (!user) {
-      user = await fastify.prisma.user.create({
-        data: { phone: normalizedPhone, name: customerName?.trim() || null, role: 'customer' },
-      });
-    }
+    const user = await fastify.prisma.user.upsert({
+      where:  { phone: normalizedPhone },
+      update: {},
+      create: { phone: normalizedPhone, name: customerName?.trim() || null, role: 'customer' },
+    });
 
     try {
       const result = await orderService.createOrder({
@@ -90,8 +89,15 @@ async function orderRoutes(fastify) {
         specialInstructions,
       });
 
-      // Create payment link immediately for guests (no separate /pay step needed)
-      const payment = await orderService.createOrderPaymentLink(result.order.id);
+      // Create payment link immediately for guests (no separate /pay step needed).
+      // If this fails, return partial success so the client can retry via the order id.
+      let paymentLink = null;
+      try {
+        const payment = await orderService.createOrderPaymentLink(result.order.id);
+        paymentLink = payment.paymentLink;
+      } catch (payErr) {
+        fastify.log.error(payErr, 'createOrderPaymentLink failed for public order — order created, payment link unavailable');
+      }
 
       return reply.code(201).send({
         order: {
@@ -102,7 +108,7 @@ async function orderRoutes(fastify) {
           status:     result.order.status,
           shop:       { name: shop.name },
         },
-        paymentLink: payment.paymentLink,
+        paymentLink,
       });
     } catch (err) {
       fastify.log.error(err, 'createOrder (public) failed');
