@@ -93,6 +93,7 @@ async function buildServer() {
     api.register(require('./routes/files'),    { prefix: '/files' });
     api.register(require('./routes/shops'),    { prefix: '/shops' });
     api.register(require('./routes/jobs'),     { prefix: '/jobs' });
+    api.register(require('./routes/orders'),   { prefix: '/orders' });
     api.register(require('./routes/users'),    { prefix: '/users' });
     api.register(require('./routes/admin'),    { prefix: '/admin' });
     api.register(require('./routes/webhooks'), { prefix: '/webhooks' });

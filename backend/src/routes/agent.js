@@ -1,9 +1,10 @@
 'use strict';
 
 const jobService = require('../services/job');
-const { notifyUser } = require('../services/notification');
+const { notifyUser, notifyReadyForPickup } = require('../services/notification');
 const messages = require('../bot/messages');
 const { findShopByAgentKey } = require('../services/agent-key');
+const { recomputeOrderStatus } = require('../services/order');
 
 const AGENT_JOB_STATUSES = ['queued', 'printing', 'ready'];
 const AGENT_HISTORY_STATUSES = ['picked_up', 'cancelled'];
@@ -178,6 +179,25 @@ async function agentRoutes(fastify) {
       try {
         await notifyUser(updated.userId, messages.statusUpdateMessage(status, updated.token));
       } catch {}
+
+      // If this job belongs to a multi-file order, recompute order status.
+      // When all sibling jobs reach 'ready', notify customer once for the whole order.
+      if (updated.orderId) {
+        try {
+          const newOrderStatus = await recomputeOrderStatus(updated.orderId);
+          if (newOrderStatus === 'ready') {
+            const order = await fastify.prisma.order.findUnique({
+              where:   { id: updated.orderId },
+              include: { jobs: { take: 1, include: { shop: true } } },
+            });
+            if (order && order.jobs[0]) {
+              notifyReadyForPickup(order.userId, order.token, order.jobs[0].shop.name).catch(() => {});
+            }
+          }
+        } catch (err) {
+          fastify.log.warn({ err }, 'recomputeOrderStatus failed — non-fatal');
+        }
+      }
 
       return updated;
     } catch (err) {
