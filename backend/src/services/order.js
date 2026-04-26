@@ -21,29 +21,29 @@ const MAX_TOKEN_RETRIES = 3;
 const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
- * Compute per-file pricing in a way that mirrors createJob, then return
- * an aggregate plus a per-file array.
+ * Compute per-file pricing using each file's own prefs.
+ * files: [{ pageCount, color, copies, doubleSided, paperSize, pageRange, binding, ...rest }]
  */
-function computeBatchPricing({ shop, files, prefs }) {
+function computeBatchPricing({ shop, files }) {
   const childPricings = files.map((file) =>
     calculatePrice({
       shop,
       pageCount: file.pageCount,
-      pageRange: prefs.pageRange,
-      color: prefs.color,
-      doubleSided: prefs.doubleSided,
-      copies: prefs.copies,
-      binding: prefs.binding,
+      pageRange: file.pageRange || 'all',
+      color: !!file.color,
+      doubleSided: !!file.doubleSided,
+      copies: file.copies || 1,
+      binding: file.binding || 'none',
     })
   );
 
   const totals = childPricings.reduce(
     (acc, p) => {
-      acc.subtotal += p.subtotal;
+      acc.subtotal    += p.subtotal;
       acc.platformFee += p.platformFee;
       acc.shopEarning += p.shopEarning;
-      acc.total += p.total;
-      acc.totalPages += p.effectivePages;
+      acc.total       += p.total;
+      acc.totalPages  += p.effectivePages;
       return acc;
     },
     { subtotal: 0, platformFee: 0, shopEarning: 0, total: 0, totalPages: 0 },
@@ -52,43 +52,47 @@ function computeBatchPricing({ shop, files, prefs }) {
   return {
     childPricings,
     totals: {
-      subtotal: round2(totals.subtotal),
+      subtotal:    round2(totals.subtotal),
       platformFee: round2(totals.platformFee),
       shopEarning: round2(totals.shopEarning),
-      total: round2(totals.total),
-      totalPages: totals.totalPages,
+      total:       round2(totals.total),
+      totalPages:  totals.totalPages,
     },
   };
 }
 
 /**
- * Create one Order with N child Jobs, all sharing one token.
+ * Create one Order with N child Jobs. Each file carries its own print prefs.
  *
- * files: [{ fileUrl, fileKey, fileName, fileSize, fileType, pageCount }]
- * prefs: { color, copies, doubleSided, paperSize, pageRange, binding }
+ * files: [{
+ *   fileUrl, fileKey, fileName, fileSize, fileType, pageCount,
+ *   color, copies, doubleSided, paperSize, pageRange, binding
+ * }]
  */
-async function createOrder({
-  userId, shopId, files, prefs, source, specialInstructions,
-}) {
-  if (!Array.isArray(files) || files.length === 0) {
-    throw new Error('files is required');
+async function createOrder({ userId, shopId, files, source, specialInstructions }) {
+  if (!Array.isArray(files) || files.length === 0 || files.length > 10) {
+    throw new Error('files must be an array of 1–10 items');
   }
 
   const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new Error('Shop not found');
 
-  const safePrefs = {
-    color: !!prefs?.color,
-    copies: prefs?.copies || 1,
-    doubleSided: !!prefs?.doubleSided,
-    paperSize: prefs?.paperSize || 'A4',
-    pageRange: prefs?.pageRange || 'all',
-    binding: prefs?.binding || 'none',
-  };
+  const safeFiles = files.map((f) => ({
+    fileUrl:     f.fileUrl,
+    fileKey:     f.fileKey     || null,
+    fileName:    f.fileName,
+    fileSize:    f.fileSize    || 0,
+    fileType:    (f.fileType   || 'pdf').toLowerCase(),
+    pageCount:   f.pageCount,
+    color:       !!f.color,
+    copies:      f.copies      || 1,
+    doubleSided: !!f.doubleSided,
+    paperSize:   f.paperSize   || 'A4',
+    pageRange:   f.pageRange   || 'all',
+    binding:     f.binding     || 'none',
+  }));
 
-  const { childPricings, totals } = computeBatchPricing({
-    shop, files, prefs: safePrefs,
-  });
+  const { childPricings, totals } = computeBatchPricing({ shop, files: safeFiles });
 
   for (let attempt = 0; attempt < MAX_TOKEN_RETRIES; attempt++) {
     try {
@@ -96,8 +100,6 @@ async function createOrder({
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
-        // Token = max(token from today's jobs/orders) + 1.
-        // Both Job and Order populate token, so we look at both ranges.
         const [lastJob, lastOrder] = await Promise.all([
           tx.job.findFirst({
             where: { shopId, createdAt: { gte: todayStart } },
@@ -119,45 +121,44 @@ async function createOrder({
             token,
             userId,
             shopId,
-            status: 'pending',
-            source: source || 'web',
-            fileCount: files.length,
-            totalPages: totals.totalPages,
-            totalPrice: totals.total,
-            platformFee: totals.platformFee,
-            shopEarning: totals.shopEarning,
+            status:              'pending',
+            source:              source || 'web',
+            fileCount:           safeFiles.length,
+            totalPages:          totals.totalPages,
+            totalPrice:          totals.total,
+            platformFee:         totals.platformFee,
+            shopEarning:         totals.shopEarning,
             specialInstructions: specialInstructions || null,
           },
         });
 
-        // Create child Jobs
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i];
+        for (let i = 0; i < safeFiles.length; i++) {
+          const f = safeFiles[i];
           const p = childPricings[i];
           await tx.job.create({
             data: {
-              orderId: order.id,
+              orderId:     order.id,
               token,
               userId,
               shopId,
-              fileUrl: f.fileUrl,
-              fileKey: f.fileKey || null,
-              fileName: f.fileName,
-              fileSize: f.fileSize || 0,
-              fileType: (f.fileType || 'pdf').toLowerCase(),
-              pageCount: f.pageCount,
-              color: safePrefs.color,
-              copies: safePrefs.copies,
-              doubleSided: safePrefs.doubleSided,
-              paperSize: safePrefs.paperSize,
-              pageRange: safePrefs.pageRange,
-              binding: safePrefs.binding,
+              fileUrl:     f.fileUrl,
+              fileKey:     f.fileKey     || null,
+              fileName:    f.fileName,
+              fileSize:    f.fileSize    || 0,
+              fileType:    (f.fileType   || 'pdf').toLowerCase(),
+              pageCount:   f.pageCount,
+              color:       f.color,
+              copies:      f.copies,
+              doubleSided: f.doubleSided,
+              paperSize:   f.paperSize,
+              pageRange:   f.pageRange,
+              binding:     f.binding,
               pricePerPage: p.pricePerPage,
-              totalPrice: p.total,
-              platformFee: p.platformFee,
-              shopEarning: p.shopEarning,
-              status: 'pending',
-              source: source || 'web',
+              totalPrice:   p.total,
+              platformFee:  p.platformFee,
+              shopEarning:  p.shopEarning,
+              status:       'pending',
+              source:       source || 'web',
             },
           });
         }
