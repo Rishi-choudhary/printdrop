@@ -22,7 +22,8 @@ function fileReceivedMessage(pageCount, fileName) {
     text:
       `Got *${escapeText(fileName)}*\n` +
       `${pageCount} page${pageCount !== 1 ? 's' : ''} detected.\n\n` +
-      `Which pages do you want to print?`,
+      `Which pages do you want to print?\n\n` +
+      `💡 Need to print *multiple files*? Visit printdrop.app`,
     buttons: [
       { text: 'All Pages', callback_data: 'pages_all' },
       { text: 'Custom Range', callback_data: 'pages_custom' },
