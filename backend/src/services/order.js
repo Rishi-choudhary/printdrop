@@ -43,7 +43,7 @@ function computeBatchPricing({ shop, files }) {
       acc.platformFee += p.platformFee;
       acc.shopEarning += p.shopEarning;
       acc.total       += p.total;
-      acc.totalPages  += p.effectivePages;
+      acc.totalPages  += p.effectivePages; // effectivePages = pages after page-range filtering
       return acc;
     },
     { subtotal: 0, platformFee: 0, shopEarning: 0, total: 0, totalPages: 0 },
