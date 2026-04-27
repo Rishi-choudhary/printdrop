@@ -60,8 +60,9 @@ model Shop {
   autoPrint Boolean @default(false)
 
   // Desktop agent connection tracking
-  agentLastSeen DateTime?
-  agentVersion  String?
+  agentLastSeen      DateTime?
+  agentVersion       String?
+  lastOfflineAlertAt DateTime?
 
   // Operating hours
   opensAt    String @default("09:00")

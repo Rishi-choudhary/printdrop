@@ -348,6 +348,15 @@ async function notifyReadyForPickup(userId, token, shopName) {
   }
 }
 
+async function notifyShopkeeper(shopId, message) {
+  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+  if (!shop) {
+    console.warn(`[notification] Shop ${shopId} not found — cannot notify shopkeeper`);
+    return;
+  }
+  return sendWhatsAppMessage(shop.phone, message);
+}
+
 async function notifyUser(userId, messageObj) {
   const conversation = await prisma.conversation.findFirst({
     where: { userId },
@@ -392,6 +401,7 @@ async function notifyUser(userId, messageObj) {
 
 module.exports = {
   notifyUser,
+  notifyShopkeeper,
   notifyTokenIssued,
   notifyReadyForPickup,
   sendTelegramMessage,

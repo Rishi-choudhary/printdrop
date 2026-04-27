@@ -188,6 +188,8 @@ async function start() {
     if (config.whatsapp.apiKey && config.whatsapp.sourceNumber) {
       fastify.log.info(`WhatsApp (Gupshup) ready — webhook: POST /api/webhooks/whatsapp`);
     }
+    // Start agent offline checker
+    require('./jobs/agent-offline-checker').start(fastify);
     // Warn when experimental v2 bot is active
     const { isEnabled: isBotV2Enabled } = require('./bot/v2');
     if (isBotV2Enabled()) {
