@@ -11,10 +11,11 @@ import { getSafeExternalUrl } from '@/lib/security';
 export default function LoginPage() {
   const { login, user } = useAuth();
   const router = useRouter();
-  const [phone, setPhone]   = useState('');
-  const [pin, setPin]       = useState('');
-  const [error, setError]   = useState('');
+  const [phone, setPhone]     = useState('');
+  const [pin, setPin]         = useState('');
+  const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const whatsappOrderUrl = getSafeExternalUrl(process.env.NEXT_PUBLIC_WHATSAPP_ORDER_URL);
 
   const phoneRef = useRef<HTMLInputElement>(null);
@@ -141,6 +142,17 @@ export default function LoginPage() {
             </div>
             {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
           </div>
+
+          {/* Remember me */}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 rounded border-border accent-primary"
+            />
+            <span className="text-sm text-muted-foreground">Remember me for 30 days</span>
+          </label>
 
           <Button
             onClick={handleSubmit}

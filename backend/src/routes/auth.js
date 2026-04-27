@@ -127,11 +127,36 @@ async function authRoutes(fastify, opts) {
   });
 
   /**
+   * POST /auth/refresh
+   * Issues a fresh 30d JWT (sliding window) for an already-authenticated user.
+   * Called automatically by the dashboard when the token has < 7 days left.
+   */
+  fastify.post('/refresh', { preHandler: [authenticate] }, async (request, reply) => {
+    const token = jwt.sign(
+      { userId: request.user.id, phone: request.user.phone, role: request.user.role },
+      config.jwtSecret,
+      { expiresIn: '30d' }
+    );
+    reply.header('Set-Cookie', createAuthCookie(token, { secure: !config.isDev }));
+    return { ok: true };
+  });
+
+  /**
    * GET /auth/me
    * Returns the currently authenticated user with their shop (if shopkeeper).
+   * Also returns tokenExpiresAt so the client can decide when to refresh.
    */
   fastify.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
-    return reply.send({ user: request.user });
+    const { getAuthTokenFromRequest } = require('../services/session-cookie');
+    const { token } = getAuthTokenFromRequest(request);
+    let tokenExpiresAt = null;
+    if (token) {
+      try {
+        const decoded = jwt.decode(token);
+        tokenExpiresAt = decoded?.exp ? new Date(decoded.exp * 1000).toISOString() : null;
+      } catch {}
+    }
+    return reply.send({ user: { ...request.user, tokenExpiresAt } });
   });
 }
 

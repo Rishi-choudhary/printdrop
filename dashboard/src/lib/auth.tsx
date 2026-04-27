@@ -10,6 +10,7 @@ interface User {
   email: string | null;
   role: string;
   shop?: { id: string; name: string; autoPrint?: boolean; agentLastSeen?: string | null } | null;
+  tokenExpiresAt?: string | null;
 }
 
 interface AuthContextType {
@@ -39,7 +40,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     clearLegacyTokenCookie();
     apiFetch<{ user: User }>('/auth/me')
-      .then((data) => setUser(data.user))
+      .then(async (data) => {
+        setUser(data.user);
+        // Auto-refresh if token expires in less than 7 days
+        if (data.user.tokenExpiresAt) {
+          const expiresAt = new Date(data.user.tokenExpiresAt).getTime();
+          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+          if (expiresAt - Date.now() < sevenDaysMs) {
+            apiFetch('/auth/refresh', { method: 'POST' }).catch(() => {});
+          }
+        }
+      })
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
