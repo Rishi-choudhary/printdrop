@@ -5,6 +5,7 @@ const botV2 = require('../bot/v2');
 const { notifyUser, notifyTokenIssued } = require('../services/notification');
 const messages = require('../bot/messages');
 const config = require('../config');
+const { broadcastQueueUpdate } = require('./ws');
 
 // Track last WhatsApp webhook receipt time — used by /health endpoint to detect
 // silent webhook outages (Gupshup stops delivering without any error).
@@ -108,6 +109,7 @@ async function webhookRoutes(fastify) {
               include: { shop: true },
             });
             if (job) {
+              broadcastQueueUpdate(job.shopId);
               notifyTokenIssued(job.userId, job.token, job.shop.name).catch(
                 (err) => console.error('[webhook] notifyTokenIssued failed:', err.message),
               );
@@ -119,6 +121,7 @@ async function webhookRoutes(fastify) {
               include: { jobs: { take: 1, include: { shop: true } } },
             });
             if (order && order.jobs[0]) {
+              broadcastQueueUpdate(order.jobs[0].shopId);
               notifyTokenIssued(order.userId, order.token, order.jobs[0].shop.name).catch(
                 (err) => console.error('[webhook] notifyTokenIssued (order) failed:', err.message),
               );

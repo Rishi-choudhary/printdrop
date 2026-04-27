@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/lib/auth';
-import { useShopQueue, useShopStats } from '@/lib/hooks';
+import { useShopQueueWS, useShopStats } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import {
@@ -227,7 +227,7 @@ function Clock() {
 export default function KDSPage() {
   const { user, logout }        = useAuth();
   const shopId                  = user?.shop?.id;
-  const { data: raw, mutate, error: pollError } = useShopQueue(shopId);
+  const { data: raw, mutate, error: pollError } = useShopQueueWS(shopId);
   const { data: stats }         = useShopStats(shopId);
   const audio                   = useAudio();
   const { toast }               = useToast();

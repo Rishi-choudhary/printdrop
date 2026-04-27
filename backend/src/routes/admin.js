@@ -207,6 +207,48 @@ async function adminRoutes(fastify) {
     return Object.values(dailyRevenue);
   });
 
+  // GET /admin/shops/:id/health — shop health metrics
+  fastify.get('/shops/:id/health', async (request, reply) => {
+    const shop = await fastify.prisma.shop.findUnique({
+      where: { id: request.params.id },
+      include: { owner: { select: { id: true, name: true, phone: true } } },
+    });
+    if (!shop) return reply.code(404).send({ error: 'Shop not found' });
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [todayJobs, queuedJobs, cancelledToday, revenue, recentJobs] = await Promise.all([
+      fastify.prisma.job.count({ where: { shopId: shop.id, createdAt: { gte: todayStart } } }),
+      fastify.prisma.job.count({ where: { shopId: shop.id, status: { in: ['queued', 'printing', 'ready'] } } }),
+      fastify.prisma.job.count({ where: { shopId: shop.id, status: 'cancelled', createdAt: { gte: todayStart } } }),
+      fastify.prisma.job.aggregate({
+        where: { shopId: shop.id, status: { in: ['queued', 'printing', 'ready', 'picked_up'] }, createdAt: { gte: todayStart } },
+        _sum: { totalPrice: true },
+      }),
+      fastify.prisma.job.findMany({
+        where: { shopId: shop.id },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: { id: true, token: true, status: true, createdAt: true, totalPrice: true, fileName: true },
+      }),
+    ]);
+
+    const agentOnline = shop.agentLastSeen
+      ? Date.now() - new Date(shop.agentLastSeen).getTime() < 2 * 60 * 1000
+      : false;
+
+    return {
+      shop: redactAgentKeyFields(shop),
+      agentOnline,
+      todayJobs,
+      queuedJobs,
+      cancelledToday,
+      todayRevenue: revenue._sum.totalPrice || 0,
+      recentJobs,
+    };
+  });
+
   // GET /admin/jobs/:id/trace — full job lifecycle trace
   fastify.get('/jobs/:id/trace', async (request, reply) => {
     const job = await fastify.prisma.job.findUnique({

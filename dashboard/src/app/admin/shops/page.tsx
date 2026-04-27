@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAdminShops } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import { Card, CardHeader, CardBody } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Store, Plus, Power, MapPin, Clock } from 'lucide-react';
+import { Store, Plus, Power, MapPin, Clock, Activity } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { buildApiPath, encodePathSegment } from '@/lib/security';
 
@@ -133,12 +134,24 @@ export default function AdminShopsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {(shops as any[]).map((shop: any) => (
+          {(shops as any[]).map((shop: any) => {
+            const agentOnline = shop.agentLastSeen
+              ? Date.now() - new Date(shop.agentLastSeen).getTime() < 2 * 60 * 1000
+              : false;
+            return (
             <Card key={shop.id} className={`transition-all ${shop.isActive ? 'border-green-200' : 'border-gray-200 opacity-70'}`}>
               <CardBody>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-semibold text-lg">{shop.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${shop.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <h3 className="font-semibold text-lg">{shop.name}</h3>
+                      {agentOnline && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700">
+                          Agent Online
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center text-xs text-gray-500 mt-1">
                       <MapPin className="w-3 h-3 mr-1" />
                       {shop.address || 'No address'}
@@ -154,7 +167,7 @@ export default function AdminShopsPage() {
                   <div>B&W: ₹{shop.ratesBwSingle}/pg | Color: ₹{shop.ratesColorSingle}/pg</div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     variant={shop.isActive ? 'danger' : 'success'}
                     size="sm"
@@ -170,10 +183,17 @@ export default function AdminShopsPage() {
                   >
                     {shop.autoPrint ? 'Auto-Print ON' : 'Auto-Print OFF'}
                   </Button>
+                  <Link href={`/admin/shops/${encodePathSegment(shop.id)}`}>
+                    <Button variant="secondary" size="sm">
+                      <Activity className="w-3.5 h-3.5 mr-1" />
+                      Health
+                    </Button>
+                  </Link>
                 </div>
               </CardBody>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

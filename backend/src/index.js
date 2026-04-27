@@ -2,6 +2,7 @@ const Fastify = require('fastify');
 const cors = require('@fastify/cors');
 const multipart = require('@fastify/multipart');
 const fastifyStatic = require('@fastify/static');
+const fastifyWebsocket = require('@fastify/websocket');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -86,6 +87,10 @@ async function buildServer() {
 
   // Register rate limiter
   await fastify.register(require('./middleware/rate-limit'));
+
+  // WebSocket support
+  await fastify.register(fastifyWebsocket);
+  fastify.register(require('./routes/ws').wsRoutes);
 
   // Register all routes under /api prefix
   await fastify.register(async function apiRoutes(api) {

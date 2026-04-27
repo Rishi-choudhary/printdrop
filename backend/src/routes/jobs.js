@@ -4,6 +4,7 @@ const paymentService = require('../services/payment');
 const { notifyUser, notifyReadyForPickup } = require('../services/notification');
 const messages = require('../bot/messages');
 const { parseInteger, isAuthorizedForJob, isValidStorageKey } = require('../utils/request');
+const { broadcastQueueUpdate } = require('./ws');
 
 const JOB_STATUSES = new Set(['pending', 'payment_pending', 'queued', 'printing', 'ready', 'picked_up', 'cancelled']);
 const PAPER_SIZES = new Set(['A4', 'A3', 'Letter', 'Legal']);
@@ -235,6 +236,8 @@ async function jobRoutes(fastify) {
 
     try {
       const updated = await jobService.updateJobStatus(request.params.id, status, { printerId, printerName });
+
+      broadcastQueueUpdate(job.shopId);
 
       // Notify customer — use template-aware call for "ready" (may arrive outside 24h window)
       try {
