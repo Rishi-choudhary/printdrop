@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAdminJobs } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import { encodePathSegment, getSafeHref } from '@/lib/security';
@@ -31,6 +32,7 @@ const BADGE: Record<string, string> = {
 };
 
 export default function AdminJobsPage() {
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState('');
   const [search,       setSearch]       = useState('');
   const [page,         setPage]         = useState(0);
@@ -134,7 +136,10 @@ export default function AdminJobsPage() {
                   const safeFileUrl = getSafeHref(job.fileUrl);
 
                   return (
-                  <tr key={job.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={job.id}
+                      className="hover:bg-blue-50 transition-colors cursor-pointer"
+                      onClick={() => router.push(`/admin/jobs/${encodePathSegment(job.id)}`)}>
+
                     <td className="px-4 py-3 font-black font-mono text-gray-800">
                       #{String(job.token).padStart(3, '0')}
                     </td>

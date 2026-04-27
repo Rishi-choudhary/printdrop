@@ -206,6 +206,79 @@ async function adminRoutes(fastify) {
 
     return Object.values(dailyRevenue);
   });
+
+  // GET /admin/jobs/:id/trace — full job lifecycle trace
+  fastify.get('/jobs/:id/trace', async (request, reply) => {
+    const job = await fastify.prisma.job.findUnique({
+      where: { id: request.params.id },
+      include: {
+        shop: { select: { id: true, name: true, address: true, phone: true } },
+        user: { select: { id: true, phone: true, name: true } },
+        payment: true,
+        printer: true,
+      },
+    });
+
+    if (!job) return reply.code(404).send({ error: 'Job not found' });
+
+    // Build timeline from timestamps
+    const timeline = [];
+
+    if (job.createdAt) {
+      const specs = [
+        `${job.pageCount} page${job.pageCount !== 1 ? 's' : ''}`,
+        job.color ? 'Color' : 'B&W',
+        job.paperSize || 'A4',
+        `${job.copies} cop${job.copies !== 1 ? 'ies' : 'y'}`,
+      ].join(', ');
+      timeline.push({ event: 'created', at: job.createdAt.toISOString(), details: specs });
+    }
+
+    if (job.status === 'payment_pending' || job.paidAt) {
+      timeline.push({
+        event: 'payment_pending',
+        at: job.createdAt.toISOString(), // best approximation
+        details: job.payment?.razorpayPaymentLink ? 'Razorpay link created' : 'Payment link created',
+      });
+    }
+
+    if (job.paidAt) {
+      timeline.push({
+        event: 'queued',
+        at: job.paidAt.toISOString(),
+        details: `Payment ₹${job.totalPrice?.toFixed(0)} received`,
+      });
+    }
+
+    if (job.printedAt) {
+      const agentInfo = job.agentVersion ? `Agent v${job.agentVersion}` : 'Agent';
+      const printerInfo = job.printerName ? ` → ${job.printerName}` : '';
+      timeline.push({
+        event: 'printing',
+        at: job.printedAt.toISOString(),
+        details: `${agentInfo}${printerInfo}`,
+      });
+    }
+
+    if (job.readyAt) {
+      let details = 'Print ready';
+      if (job.printedAt) {
+        const secs = Math.round((new Date(job.readyAt) - new Date(job.printedAt)) / 1000);
+        if (secs > 0) details = `Printed in ${secs}s`;
+      }
+      timeline.push({ event: 'ready', at: job.readyAt.toISOString(), details });
+    }
+
+    if (job.pickedUpAt) {
+      timeline.push({ event: 'picked_up', at: job.pickedUpAt.toISOString(), details: 'Customer picked up' });
+    }
+
+    if (job.cancelledAt) {
+      timeline.push({ event: 'cancelled', at: job.cancelledAt.toISOString(), details: 'Order cancelled' });
+    }
+
+    return { job, timeline };
+  });
 }
 
 module.exports = adminRoutes;
