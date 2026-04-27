@@ -46,9 +46,14 @@ async function checkAgents() {
 
 function start(fastify) {
   const interval = setInterval(checkAgents, CHECK_INTERVAL_MS);
-  // Allow Node.js to exit even if interval is still registered
   interval.unref();
-  fastify?.log?.info('[agent-checker] Agent offline checker started (2-minute interval)');
+
+  if (fastify) {
+    fastify.addHook('onClose', () => {
+      clearInterval(interval);
+    });
+    fastify.log.info('[agent-checker] Agent offline checker started (2-minute interval)');
+  }
 }
 
 module.exports = { start, checkAgents };
