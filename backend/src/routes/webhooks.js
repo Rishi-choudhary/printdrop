@@ -282,6 +282,60 @@ async function webhookRoutes(fastify) {
     return job;
   });
 
+  // GET /webhooks/razorpay/by-link/:linkId — look up job by Razorpay payment link ID (plink_xxx).
+  // Fallback for UPI mobile redirects that drop custom callback_url query params (e.g. job_id).
+  fastify.get('/razorpay/by-link/:linkId', async (request, reply) => {
+    const { linkId } = request.params;
+    if (!linkId || !/^plink_/.test(linkId)) {
+      return reply.code(400).send({ error: 'Invalid payment link ID' });
+    }
+
+    const payment = await fastify.prisma.payment.findFirst({
+      where: { razorpayOrderId: linkId },
+      select: {
+        jobId: true,
+        orderId: true,
+        status: true,
+      },
+    });
+
+    if (!payment) return reply.code(404).send({ error: 'Payment not found' });
+
+    if (payment.jobId) {
+      const job = await fastify.prisma.job.findUnique({
+        where: { id: payment.jobId },
+        select: {
+          id: true,
+          token: true,
+          status: true,
+          fileName: true,
+          shop: { select: { name: true } },
+        },
+      });
+      if (!job) return reply.code(404).send({ error: 'Job not found' });
+      return { jobId: job.id, ...job };
+    }
+
+    if (payment.orderId) {
+      const order = await fastify.prisma.order.findUnique({
+        where: { id: payment.orderId },
+        include: { jobs: { take: 1, include: { shop: true } } },
+      });
+      if (!order || !order.jobs[0]) return reply.code(404).send({ error: 'Order not found' });
+      const j = order.jobs[0];
+      return {
+        jobId: j.id,
+        id: j.id,
+        token: order.token,
+        status: order.status,
+        fileName: j.fileName,
+        shop: { name: j.shop?.name },
+      };
+    }
+
+    return reply.code(404).send({ error: 'No job linked to this payment' });
+  });
+
   // POST /webhooks/razorpay/checkout-order — create a Razorpay order for Standard Checkout
   // Called by the frontend /pay/[jobId] page before opening the checkout.js modal.
   fastify.post('/razorpay/checkout-order', async (request, reply) => {

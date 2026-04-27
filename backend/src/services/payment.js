@@ -163,6 +163,9 @@ async function createPaymentLink({ jobId, orderId, amount, customerPhone, custom
     amount: Math.round(amount * 100), // Razorpay uses paise
     currency: 'INR',
     description: description || `PrintDrop Order`,
+    // reference_id appears as razorpay_payment_link_reference_id in the redirect —
+    // used as fallback when UPI mobile redirect drops our custom callback_url query params.
+    reference_id: (isOrder ? orderId : jobId).slice(0, 40),
     customer: {
       contact: phone,
       name: customerName || 'Customer',

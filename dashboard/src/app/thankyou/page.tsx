@@ -51,6 +51,8 @@ function ThankYouContent() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const jobId = searchParams.get('job_id');
+  // razorpay_payment_link_reference_id = reference_id we set on the payment link (jobId/orderId).
+  // razorpay_payment_link_id = plink_xxx — used to look up our DB when both of the above are missing.
   const razorpayPaymentId = searchParams.get('razorpay_payment_id');
   const razorpayPaymentLinkId = searchParams.get('razorpay_payment_link_id');
   const razorpayPaymentLinkRefId = searchParams.get('razorpay_payment_link_reference_id');
@@ -91,14 +93,42 @@ function ThankYouContent() {
   }, [loadJobStatus]);
 
   useEffect(() => {
-    if (!jobId) {
-      setErrorMsg('Invalid payment link. Missing job ID.');
-      setState('error');
-      return;
+    // UPI mobile redirects sometimes strip custom callback_url params (job_id).
+    // Recover via reference_id (set on the link = jobId) or by looking up plink_ id.
+    async function resolveJobId(): Promise<string | null> {
+      if (jobId) return jobId;
+
+      // reference_id we set = jobId (for new payment links)
+      if (razorpayPaymentLinkRefId && razorpayPaymentLinkRefId.length > 10) {
+        return razorpayPaymentLinkRefId;
+      }
+
+      // Fallback: look up by plink_ id in our database
+      if (razorpayPaymentLinkId && razorpayPaymentLinkId.startsWith('plink_')) {
+        try {
+          const res = await fetch(`/api/webhooks/razorpay/by-link/${encodePathSegment(razorpayPaymentLinkId)}`, { cache: 'no-store' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.jobId) return data.jobId;
+          }
+        } catch {
+          // fall through
+        }
+      }
+
+      return null;
     }
-    const id = jobId;
 
     async function processPayment() {
+      const resolvedJobId = await resolveJobId();
+
+      if (!resolvedJobId) {
+        setErrorMsg('Invalid payment link. Missing job ID.');
+        setState('error');
+        return;
+      }
+      const id = resolvedJobId;
+
       const hasRazorpayCallback = Boolean(
         razorpayPaymentId &&
         razorpayPaymentLinkId &&
@@ -158,12 +188,13 @@ function ThankYouContent() {
   ]);
 
   useEffect(() => {
-    if (!jobId || state !== 'success') return;
+    const id = job?.id || jobId;
+    if (!id || state !== 'success') return;
     const interval = window.setInterval(() => {
-      loadJobStatus(jobId).catch(() => {});
+      loadJobStatus(id).catch(() => {});
     }, 10000);
     return () => window.clearInterval(interval);
-  }, [jobId, loadJobStatus, state]);
+  }, [job?.id, jobId, loadJobStatus, state]);
 
   if (state === 'loading' || state === 'polling') {
     return (
@@ -190,8 +221,8 @@ function ThankYouContent() {
               <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
             </div>
             <div className="grid gap-2">
-              {jobId && (
-                <Link href={`/pay/${encodePathSegment(jobId)}`}>
+              {(jobId || job?.id) && (
+                <Link href={`/pay/${encodePathSegment((jobId || job?.id)!)}`}>
                   <Button className="w-full" size="lg">
                     <RefreshCw className="w-4 h-4" />
                     Check payment
