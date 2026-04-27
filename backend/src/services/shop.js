@@ -109,12 +109,6 @@ async function getShopEarnings(shopId) {
   const thisMonth = pickedUpJobs.filter((j) => j.pickedUpAt && new Date(j.pickedUpAt) >= startOfMonth).reduce((s, j) => s + j.shopEarning, 0);
   const allTime = pickedUpJobs.reduce((s, j) => s + j.shopEarning, 0);
 
-  // Next settlement is every Monday
-  const nextMonday = new Date(now);
-  const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
-  nextMonday.setDate(now.getDate() + daysUntilMonday);
-  nextMonday.setHours(0, 0, 0, 0);
-
   return {
     pendingSettlement: Math.round(pendingSettlement * 100) / 100,
     lastSettledAmount: lastSettlement?.amount || 0,
