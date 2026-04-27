@@ -61,6 +61,10 @@ export function useUserJobs() {
   return useSWR('/users/me/jobs', fetcher);
 }
 
+export function useUserOrders(page = 1, limit = 20) {
+  return useSWR(`/users/me/orders?page=${page}&limit=${limit}`, fetcher);
+}
+
 export function useShopEarnings(shopId: string | undefined) {
   return useSWR(
     shopId ? `/shops/${shopId}/earnings` : null,

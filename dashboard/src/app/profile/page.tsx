@@ -180,9 +180,14 @@ export default function ProfilePage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-sm">Order History</h2>
-              {pastJobs.length > 0 && (
-                <span className="text-xs text-gray-400">{pastJobs.length} orders</span>
-              )}
+              <div className="flex items-center gap-3">
+                {pastJobs.length > 0 && (
+                  <span className="text-xs text-gray-400">{pastJobs.length} orders</span>
+                )}
+                <Link href="/profile/orders" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1">
+                  View all <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
             </div>
           </CardHeader>
           <CardBody className="p-0">

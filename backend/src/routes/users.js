@@ -66,6 +66,49 @@ async function userRoutes(fastify) {
     return jobService.getJobsByUser(request.user.id, limit, offset);
   });
 
+  // GET /users/me/orders?page=1&limit=20 — paginated order history (excludes pending)
+  fastify.get('/me/orders', {
+    preHandler: [authenticate],
+  }, async (request) => {
+    const limit = parseInteger(request.query.limit, { defaultValue: 20, min: 1, max: 100 });
+    const page = parseInteger(request.query.page, { defaultValue: 1, min: 1 });
+    const offset = (page - 1) * limit;
+
+    const where = {
+      userId: request.user.id,
+      status: { not: 'pending' },
+    };
+
+    const [jobs, total] = await Promise.all([
+      fastify.prisma.job.findMany({
+        where,
+        select: {
+          id: true,
+          token: true,
+          fileName: true,
+          pageCount: true,
+          status: true,
+          totalPrice: true,
+          createdAt: true,
+          paidAt: true,
+          shop: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      fastify.prisma.job.count({ where }),
+    ]);
+
+    return {
+      jobs,
+      total,
+      page,
+      limit,
+      hasMore: offset + jobs.length < total,
+    };
+  });
+
   // GET /users/me/referrals — referral status
   fastify.get('/me/referrals', {
     preHandler: [authenticate],
