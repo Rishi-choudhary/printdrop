@@ -117,3 +117,32 @@ export function removeCachedWebOrder(jobId: string): CachedWebOrder[] {
   window.dispatchEvent(new Event('printdrop:web-orders-updated'));
   return next;
 }
+
+// ── Multi-file order cache (new /orders endpoint) ─────────────────────────────
+
+export interface CachedOrder {
+  orderId:   string;
+  token:     number;
+  shopName:  string;
+  fileCount: number;
+  status:    string;
+  updatedAt: number;
+}
+
+const ORDER_CACHE_KEY = 'printdrop_orders';
+const ORDER_CACHE_MAX = 10;
+
+export function upsertCachedOrder(order: CachedOrder): void {
+  try {
+    const raw  = localStorage.getItem(ORDER_CACHE_KEY);
+    const list: CachedOrder[] = raw ? JSON.parse(raw) : [];
+    const idx  = list.findIndex((o) => o.orderId === order.orderId);
+    if (idx >= 0) {
+      list[idx] = { ...order, updatedAt: Date.now() };
+    } else {
+      list.unshift({ ...order, updatedAt: Date.now() });
+      if (list.length > ORDER_CACHE_MAX) list.pop();
+    }
+    localStorage.setItem(ORDER_CACHE_KEY, JSON.stringify(list));
+  } catch {}
+}
