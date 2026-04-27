@@ -72,10 +72,11 @@ model Shop {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner    User          @relation(fields: [ownerId], references: [id])
-  jobs     Job[]
-  orders   Order[]
-  printers ShopPrinter[]
+  owner       User          @relation(fields: [ownerId], references: [id])
+  jobs        Job[]
+  orders      Order[]
+  printers    ShopPrinter[]
+  settlements Settlement[]
 
   @@index([isActive])
   @@index([agentKey])
@@ -251,6 +252,18 @@ model OTP {
 
   @@index([phone, code])
   @@index([expiresAt])
+}
+
+model Settlement {
+  id        String   @id @default(cuid())
+  shopId    String
+  amount    Float
+  period    String   // "2026-04-21/2026-04-27"
+  settledAt DateTime @default(now())
+  notes     String?
+  shop      Shop     @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
 }
 
 model ShopPrinter {

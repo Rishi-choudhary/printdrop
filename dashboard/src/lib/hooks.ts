@@ -61,6 +61,14 @@ export function useUserJobs() {
   return useSWR('/users/me/jobs', fetcher);
 }
 
+export function useShopEarnings(shopId: string | undefined) {
+  return useSWR(
+    shopId ? `/shops/${shopId}/earnings` : null,
+    fetcher,
+    { refreshInterval: 60000 }
+  );
+}
+
 export function useShopHistory(shopId: string | undefined, page = 0, limit = 50) {
   const params = new URLSearchParams({ status: 'completed', limit: String(limit), offset: String(page * limit) }).toString();
   return useSWR(

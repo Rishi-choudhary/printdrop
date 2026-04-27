@@ -261,6 +261,21 @@ async function shopRoutes(fastify) {
       total: { jobs: totalJobs },
     };
   });
+
+  // GET /shops/:id/earnings — earnings summary (owner or admin)
+  fastify.get('/:id/earnings', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const shop = await shopService.getShopById(request.params.id);
+    if (!shop) return reply.code(404).send({ error: 'Shop not found' });
+
+    if (request.user.role !== 'admin' && shop.ownerId !== request.user.id) {
+      return reply.code(403).send({ error: 'Not authorized' });
+    }
+
+    const earnings = await shopService.getShopEarnings(request.params.id);
+    return earnings;
+  });
 }
 
 module.exports = shopRoutes;

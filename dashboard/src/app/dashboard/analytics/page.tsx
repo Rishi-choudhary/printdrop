@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/lib/auth';
-import { useShopStats, useShopQueue } from '@/lib/hooks';
+import { useShopStats, useShopQueue, useShopEarnings } from '@/lib/hooks';
 import { Card, CardHeader, CardBody } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ export default function AnalyticsPage() {
   const shopId = user?.shop?.id;
   const { data: stats, error: statsError } = useShopStats(shopId);
   const { data: jobs, error: queueError } = useShopQueue(shopId);
+  const { data: earnings, error: earningsError } = useShopEarnings(shopId);
 
   if (!shopId) {
     return (
@@ -128,6 +129,45 @@ export default function AnalyticsPage() {
               <p className="text-xs text-gray-500">Avg Job Value</p>
             </div>
           </div>
+        </CardBody>
+      </Card>
+
+      {/* Earnings & Settlement */}
+      <Card>
+        <CardHeader><h2 className="font-semibold">Earnings & Settlement</h2></CardHeader>
+        <CardBody>
+          {earningsError ? (
+            <p className="text-sm text-red-500">Failed to load earnings</p>
+          ) : !earnings ? (
+            <p className="text-sm text-gray-400 text-center py-4">Loading...</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">This Week</p>
+                  <p className="text-2xl font-bold text-green-600">₹{earnings.thisWeek.toFixed(0)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">This Month</p>
+                  <p className="text-2xl font-bold text-blue-600">₹{earnings.thisMonth.toFixed(0)}</p>
+                </div>
+              </div>
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Pending Settlement</span>
+                  <span className="font-semibold text-orange-600">₹{earnings.pendingSettlement.toFixed(0)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Last Settled</span>
+                  <span className="font-semibold">₹{earnings.lastSettledAmount.toFixed(0)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Next Settlement</span>
+                  <span className="text-sm text-gray-500">{earnings.nextSettlementDate}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </CardBody>
       </Card>
     </div>
