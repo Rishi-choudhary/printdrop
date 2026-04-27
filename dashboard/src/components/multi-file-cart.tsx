@@ -83,6 +83,7 @@ function FileAccordion({ file, isOpen, onToggle, onChange, onCopyToAll, showCopy
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Header row */}
       <button
+        type="button"
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
       >
@@ -106,6 +107,7 @@ function FileAccordion({ file, isOpen, onToggle, onChange, onCopyToAll, showCopy
           {/* Copy to all */}
           {showCopyAll && (
             <button
+              type="button"
               onClick={onCopyToAll}
               className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700"
             >
@@ -134,11 +136,13 @@ function FileAccordion({ file, isOpen, onToggle, onChange, onCopyToAll, showCopy
             </span>
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => onChange({ ...pref, copies: Math.max(1, pref.copies - 1) })}
                 className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 text-lg font-bold"
               >−</button>
               <span className="w-8 text-center font-bold text-base">{pref.copies}</span>
               <button
+                type="button"
                 onClick={() => onChange({ ...pref, copies: Math.min(99, pref.copies + 1) })}
                 className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 text-lg font-bold"
               >+</button>
@@ -179,6 +183,7 @@ function FileAccordion({ file, isOpen, onToggle, onChange, onCopyToAll, showCopy
             </div>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => onChange({ ...pref, pageRange: 'all' })}
                 className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
                   pref.pageRange === 'all'
@@ -236,6 +241,7 @@ function ToggleRow<T extends string | boolean>({
       <div className="flex gap-2">
         {options.map((opt) => (
           <button
+            type="button"
             key={String(opt.value)}
             onClick={() => onChange(opt.value)}
             className={`flex-1 px-2 py-2 rounded-lg text-center border transition-all ${
