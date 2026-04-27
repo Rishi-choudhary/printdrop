@@ -44,16 +44,16 @@ async function checkAgents() {
   }
 }
 
-function start(fastify) {
-  const interval = setInterval(checkAgents, CHECK_INTERVAL_MS);
-  interval.unref();
+let _interval = null;
 
-  if (fastify) {
-    fastify.addHook('onClose', () => {
-      clearInterval(interval);
-    });
-    fastify.log.info('[agent-checker] Agent offline checker started (2-minute interval)');
-  }
+function start(logger) {
+  _interval = setInterval(checkAgents, CHECK_INTERVAL_MS);
+  _interval.unref();
+  if (logger) logger.info('[agent-checker] Agent offline checker started (2-minute interval)');
 }
 
-module.exports = { start, checkAgents };
+function stop() {
+  if (_interval) { clearInterval(_interval); _interval = null; }
+}
+
+module.exports = { start, stop, checkAgents };

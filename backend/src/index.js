@@ -194,7 +194,8 @@ async function start() {
       fastify.log.info(`WhatsApp (Gupshup) ready — webhook: POST /api/webhooks/whatsapp`);
     }
     // Start agent offline checker
-    require('./jobs/agent-offline-checker').start(fastify);
+    const agentChecker = require('./jobs/agent-offline-checker');
+    agentChecker.start(fastify.log);
     // Warn when experimental v2 bot is active
     const { isEnabled: isBotV2Enabled } = require('./bot/v2');
     if (isBotV2Enabled()) {
@@ -203,6 +204,7 @@ async function start() {
     // Graceful shutdown — stop Telegram bot polling before exit
     const shutdown = async (signal) => {
       fastify.log.info(`${signal} received, shutting down...`);
+      agentChecker.stop();
       try {
         const { stopTelegramBot } = require('./bot/telegram');
         await stopTelegramBot();
