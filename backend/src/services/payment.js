@@ -174,7 +174,9 @@ async function createPaymentLink({ jobId, orderId, amount, customerPhone, custom
       sms: !!phone,
       email: false,
     },
-    callback_url: `${config.frontendUrl}/thankyou?${callbackQs}`,
+    // Put jobId/orderId in the URL PATH, not query string — Razorpay UPI mobile
+    // redirect sometimes strips custom query params but never strips the path.
+    callback_url: `${config.frontendUrl}/${isOrder ? `pay/order/${orderId}` : `pay/${jobId}`}`,
     callback_method: 'get',
     expire_by: Math.floor(Date.now() / 1000) + 1800, // 30 min expiry
     notes: {

@@ -182,14 +182,22 @@ async function webhookRoutes(fastify) {
     }
 
     if (razorpay_signature && config.razorpay.keySecret) {
-      const body = `${razorpay_payment_link_id}|${razorpay_payment_link_reference_id}|${razorpay_payment_link_status}|${razorpay_payment_id}`;
+      // null/undefined reference_id must be treated as empty string — Razorpay computes
+      // HMAC over an empty segment when no reference_id was set on the payment link.
+      const refId = razorpay_payment_link_reference_id ?? '';
+      const body = `${razorpay_payment_link_id}|${refId}|${razorpay_payment_link_status}|${razorpay_payment_id}`;
       const expected = crypto
         .createHmac('sha256', config.razorpay.keySecret)
         .update(body)
         .digest('hex');
 
       const expectedBuffer = Buffer.from(expected, 'hex');
-      const actualBuffer = Buffer.from(razorpay_signature, 'hex');
+      let actualBuffer;
+      try {
+        actualBuffer = Buffer.from(razorpay_signature, 'hex');
+      } catch {
+        return reply.code(400).send({ error: 'Invalid payment signature format' });
+      }
       if (expectedBuffer.length !== actualBuffer.length || !crypto.timingSafeEqual(expectedBuffer, actualBuffer)) {
         return reply.code(400).send({ error: 'Invalid payment signature' });
       }

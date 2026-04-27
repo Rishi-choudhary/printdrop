@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import Script from 'next/script';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, CreditCard, IndianRupee, FileText, Printer, Loader2, Home } from 'lucide-react';
@@ -19,14 +20,21 @@ declare global {
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 const RAZORPAY_ENABLE_UPI = process.env.NEXT_PUBLIC_RAZORPAY_ENABLE_UPI === '1';
 
-export default function PaymentPage({ params }: { params: { jobId: string } }) {
-  const { jobId } = params;
+function PaymentPageContent({ jobId }: { jobId: string }) {
+  const searchParams = useSearchParams();
   const [job, setJob] = useState<any>(null);
   const [payment, setPayment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [error, setError] = useState('');
+  const [verifyingCallback, setVerifyingCallback] = useState(false);
+
+  const razorpayPaymentId = searchParams.get('razorpay_payment_id');
+  const razorpayPaymentLinkId = searchParams.get('razorpay_payment_link_id');
+  const razorpayPaymentLinkRefId = searchParams.get('razorpay_payment_link_reference_id');
+  const razorpayPaymentLinkStatus = searchParams.get('razorpay_payment_link_status');
+  const razorpaySignature = searchParams.get('razorpay_signature');
 
   const cacheOrder = (nextJob: any) => {
     if (!nextJob) return;
@@ -39,7 +47,94 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
     });
   };
 
+  const loadJob = useCallback(async () => {
+    const r = await fetch(`/api/webhooks/razorpay/job/${encodePathSegment(jobId)}`, { cache: 'no-store' });
+    const data = await r.json();
+    if (r.ok) {
+      setJob(data);
+      cacheOrder(data);
+    }
+    return r.ok ? data : null;
+  }, [jobId]);
+
+  // Handle Razorpay callback redirect: params are in the URL, jobId is in the path.
+  // This runs when user returns from Razorpay hosted payment page (UPI mobile flow).
   useEffect(() => {
+    const isCallback = razorpayPaymentLinkStatus === 'paid' && !!razorpaySignature && !!razorpayPaymentLinkId;
+    if (!isCallback) return;
+
+    setVerifyingCallback(true);
+    setLoading(false);
+
+    async function processCallback() {
+      try {
+        const res = await fetch('/api/webhooks/razorpay/callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            job_id: jobId,
+            razorpay_payment_id: razorpayPaymentId,
+            razorpay_payment_link_id: razorpayPaymentLinkId,
+            razorpay_payment_link_reference_id: razorpayPaymentLinkRefId,
+            razorpay_payment_link_status: razorpayPaymentLinkStatus,
+            razorpay_signature: razorpaySignature,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.ok) {
+          const updatedJob = await loadJob();
+          if (updatedJob) setJob(updatedJob);
+          setPaid(true);
+          setVerifyingCallback(false);
+          return;
+        }
+
+        // 402 = payment not yet captured by Razorpay — poll for webhook
+        if (res.status === 402) {
+          await pollForPayment();
+          return;
+        }
+
+        // Signature check failed or other error
+        if (data?.error) {
+          // Try polling anyway — webhook may have already processed it
+          await pollForPayment();
+        }
+      } catch {
+        await pollForPayment();
+      }
+    }
+
+    async function pollForPayment(attempts = 0): Promise<void> {
+      if (attempts >= 16) {
+        setError('Payment is still being confirmed. Your token will be sent via WhatsApp once Razorpay confirms it.');
+        setVerifyingCallback(false);
+        return;
+      }
+      try {
+        const data = await loadJob();
+        if (data && ['queued', 'printing', 'ready', 'picked_up'].includes(data.status)) {
+          setPaid(true);
+          setVerifyingCallback(false);
+          return;
+        }
+      } catch {
+        // continue polling
+      }
+      await new Promise((r) => setTimeout(r, 2500));
+      await pollForPayment(attempts + 1);
+    }
+
+    processCallback();
+  }, []); // run once on mount — callback params are stable
+
+  useEffect(() => {
+    // Skip initial load if we're already handling a Razorpay callback
+    const isCallback = razorpayPaymentLinkStatus === 'paid' && !!razorpaySignature;
+    if (isCallback) return;
+
     async function load() {
       try {
         const r = await fetch(`/api/webhooks/razorpay/job/${encodePathSegment(jobId)}`);
@@ -78,7 +173,7 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
           cacheOrder(data);
         }
       } catch {
-        // ignore refresh failures
+        // ignore
       }
     }, 10000);
     return () => window.clearInterval(interval);
@@ -97,7 +192,6 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
       }).catch(() => {});
     };
 
-    // Standard Checkout — open Razorpay modal inline
     if (RAZORPAY_KEY_ID) {
       try {
         const res = await fetch('/api/webhooks/razorpay/checkout-order', {
@@ -179,7 +273,7 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
           setPaying(false);
         });
         rzp.open();
-        return; // control returns via handler/ondismiss callbacks
+        return;
       } catch (err: any) {
         setError(err.message || 'Could not initiate payment. Please try again.');
         setPaying(false);
@@ -187,14 +281,14 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
       }
     }
 
-    // Fallback: redirect to Razorpay payment link (production without key in env)
+    // Fallback: redirect to Razorpay payment link (no checkout.js key)
     const safePaymentLink = getSafePaymentUrl(payment?.razorpayPaymentLink);
     if (safePaymentLink) {
       window.location.assign(safePaymentLink);
       return;
     }
 
-    // Dev mode: simulate payment via mock webhook
+    // Dev mode mock
     try {
       await fetch('/api/webhooks/razorpay/mock', {
         method: 'POST',
@@ -219,6 +313,17 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
     }
     setPaying(false);
   };
+
+  // Razorpay callback redirect — verifying payment
+  if (verifyingCallback) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-blue-50 to-white p-4 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
+        <p className="font-semibold text-gray-800">Confirming your payment…</p>
+        <p className="text-sm text-gray-500">Keep this page open. Your token will appear here.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -251,7 +356,6 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
         <Card className="max-w-md w-full shadow-lg">
           <CardBody className="p-6">
             {paid ? (
-              /* Success State */
               <div className="py-4 text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                   <CheckCircle className="w-8 h-8 text-green-600" />
@@ -283,7 +387,6 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
                 </Link>
               </div>
             ) : (
-              /* Payment State */
               <>
                 <div className="text-center mb-6">
                   <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 mb-3">
@@ -345,5 +448,17 @@ export default function PaymentPage({ params }: { params: { jobId: string } }) {
         </Card>
       </div>
     </>
+  );
+}
+
+export default function PaymentPage({ params }: { params: { jobId: string } }) {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    }>
+      <PaymentPageContent jobId={params.jobId} />
+    </Suspense>
   );
 }
