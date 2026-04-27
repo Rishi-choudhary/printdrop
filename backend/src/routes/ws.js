@@ -17,13 +17,16 @@ function broadcastQueueUpdate(shopId) {
 }
 
 async function wsRoutes(fastify) {
-  fastify.get('/ws/shop/:shopId', { websocket: true }, async (socket, request) => {
+  // @fastify/websocket v8 (Fastify v4): handler receives (connection, request)
+  // connection.socket is the underlying WebSocket
+  fastify.get('/ws/shop/:shopId', { websocket: true }, async (connection, request) => {
+    const ws = connection.socket;
     const { shopId } = request.params;
 
     const cookies = parseCookies(request.headers.cookie);
     const token = cookies['pd_session'];
     if (!token) {
-      socket.close(4001, 'Unauthorized');
+      ws.close(4001, 'Unauthorized');
       return;
     }
 
@@ -31,7 +34,7 @@ async function wsRoutes(fastify) {
     try {
       payload = jwt.verify(token, config.jwtSecret);
     } catch {
-      socket.close(4001, 'Unauthorized');
+      ws.close(4001, 'Unauthorized');
       return;
     }
 
@@ -41,18 +44,18 @@ async function wsRoutes(fastify) {
     });
 
     if (!user || (user.role !== 'admin' && user.shop?.id !== shopId)) {
-      socket.close(4003, 'Forbidden');
+      ws.close(4003, 'Forbidden');
       return;
     }
 
     if (!shopChannels.has(shopId)) shopChannels.set(shopId, new Set());
     const clients = shopChannels.get(shopId);
-    clients.add(socket);
+    clients.add(ws);
 
-    try { socket.send(JSON.stringify({ type: 'connected', shopId })); } catch (_) {}
+    try { ws.send(JSON.stringify({ type: 'connected', shopId })); } catch (_) {}
 
-    socket.on('close', () => {
-      clients.delete(socket);
+    ws.on('close', () => {
+      clients.delete(ws);
       if (clients.size === 0) shopChannels.delete(shopId);
     });
   });
