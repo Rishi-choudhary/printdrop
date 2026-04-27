@@ -333,8 +333,19 @@ async function addTokenBackPage(documentPath, token, options = {}) {
   const fontSize  = 72;
   const textWidth = boldFont.widthOfTextAtSize(tokenStr, fontSize);
   const margin    = 40;
+  const barWidth  = 34; // ≥12mm at 72dpi for stack visibility
 
-  const x = corner === 'bottom-left' ? margin : width - textWidth - margin;
+  // Draw the solid black edge bar BEFORE text so text renders on top
+  stampPage.drawRectangle({
+    x: width - barWidth,
+    y: 0,
+    width: barWidth,
+    height,
+    color: rgb(0, 0, 0),
+  });
+
+  // For bottom-right, shift text left of the bar to avoid overlap
+  const x = corner === 'bottom-left' ? margin : width - textWidth - margin - barWidth;
   const y = margin;
 
   stampPage.drawText(tokenStr, { x, y, size: fontSize, font: boldFont, color: rgb(0.08, 0.08, 0.08) });
@@ -342,7 +353,7 @@ async function addTokenBackPage(documentPath, token, options = {}) {
   const label     = 'PRINTDROP TOKEN';
   const labelSize = 9;
   const labelW    = regularFont.widthOfTextAtSize(label, labelSize);
-  const labelX    = corner === 'bottom-left' ? margin : width - labelW - margin;
+  const labelX    = corner === 'bottom-left' ? margin : width - labelW - margin - barWidth;
   stampPage.drawText(label, { x: labelX, y: y + fontSize + 8, size: labelSize, font: regularFont, color: rgb(0.5, 0.5, 0.5) });
 
   // Assemble final doc in the correct page order
