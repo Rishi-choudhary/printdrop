@@ -21,8 +21,9 @@ EXPOSE 3001
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Run migrations then start
-# --accept-data-loss is required because Prisma flags any unique-constraint
-# addition (e.g. Referral [referrerId, refereeId]) as potentially data-losing.
-# It only causes loss if duplicate rows already exist; otherwise it's a no-op.
-CMD npx prisma db push --skip-generate --accept-data-loss && node backend/src/index.js
+# Schema sync is deliberately NOT run at boot: Railway cannot reach a
+# DDL-capable Supabase endpoint (session pooler / direct host), and coupling
+# `prisma db push` to container start meant one DB hiccup = total outage.
+# After changing prisma/schema.prisma, run `npm run db:push` from a machine
+# with DB access (or CI) BEFORE deploying.
+CMD ["node", "backend/src/index.js"]

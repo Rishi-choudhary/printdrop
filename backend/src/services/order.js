@@ -15,6 +15,7 @@
 
 const prisma = require('./prisma');
 const { calculatePrice } = require('./pricing');
+const { parseInteger } = require('../utils/request');
 
 const MAX_TOKEN_RETRIES = 3;
 
@@ -83,9 +84,9 @@ async function createOrder({ userId, shopId, files, source, specialInstructions 
     fileName:    f.fileName,
     fileSize:    f.fileSize    || 0,
     fileType:    (f.fileType   || 'pdf').toLowerCase(),
-    pageCount:   f.pageCount,
+    pageCount:   parseInteger(f.pageCount, { defaultValue: 1, min: 1, max: 5000 }),
     color:       !!f.color,
-    copies:      f.copies      || 1,
+    copies:      parseInteger(f.copies, { defaultValue: 1, min: 1, max: 100 }),
     doubleSided: !!f.doubleSided,
     paperSize:   f.paperSize   || 'A4',
     pageRange:   f.pageRange   || 'all',
@@ -171,7 +172,7 @@ async function createOrder({ userId, shopId, files, source, specialInstructions 
         return { order: fullOrder, totals, childPricings };
       }, { isolationLevel: 'Serializable' });
     } catch (err) {
-      if ((err.code === 'P2034' || err.code === 'P2002') && attempt < MAX_TOKEN_RETRIES - 1) {
+      if ((err.code === 'P2034' || err.code === 'P2002' || err.code === 'P2028') && attempt < MAX_TOKEN_RETRIES - 1) {
         continue;
       }
       throw err;

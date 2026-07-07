@@ -83,8 +83,9 @@ async function createJob({
 
       return { job, pricing };
     } catch (err) {
-      // Retry on serialization failure (P2034) or unique constraint (P2002)
-      if ((err.code === 'P2034' || err.code === 'P2002') && attempt < MAX_TOKEN_RETRIES - 1) {
+      // Retry on serialization failure (P2034), unique constraint (P2002),
+      // or pooler-dropped transaction (P2028 — transient with pgbouncer)
+      if ((err.code === 'P2034' || err.code === 'P2002' || err.code === 'P2028') && attempt < MAX_TOKEN_RETRIES - 1) {
         continue;
       }
       throw err;

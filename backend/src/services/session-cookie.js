@@ -82,4 +82,5 @@ module.exports = {
   clearAuthCookie,
   clearLegacyAuthCookie,
   getAuthTokenFromRequest,
+  parseCookies,
 };

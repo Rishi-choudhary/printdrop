@@ -285,9 +285,31 @@ async function webhookRoutes(fastify) {
       },
     });
 
-    if (!job) return reply.code(404).send({ error: 'Job not found' });
+    if (job) return job;
 
-    return job;
+    // The id may be an Order id (multi-file checkout) — /thankyou polls with the
+    // reference_id from the payment link, which is the orderId for order payments.
+    const order = await fastify.prisma.order.findUnique({
+      where: { id: request.params.jobId },
+      include: {
+        jobs: { take: 1, select: { fileName: true, shop: { select: { name: true } } } },
+        payment: { select: { razorpayPaymentLink: true, status: true } },
+      },
+    });
+    if (!order || !order.jobs[0]) return reply.code(404).send({ error: 'Job not found' });
+
+    return {
+      id: order.id,
+      token: order.token,
+      status: order.status,
+      fileName: order.fileCount > 1
+        ? `${order.jobs[0].fileName} +${order.fileCount - 1} more`
+        : order.jobs[0].fileName,
+      pageCount: order.totalPages,
+      totalPrice: order.totalPrice,
+      shop: { name: order.jobs[0].shop?.name },
+      payment: order.payment,
+    };
   });
 
   // GET /webhooks/razorpay/by-link/:linkId — look up job by Razorpay payment link ID (plink_xxx).
