@@ -69,10 +69,6 @@ const config = {
     allowedFileTypes: (process.env.ALLOWED_FILE_TYPES || 'pdf,jpg,jpeg,png,doc,docx,ppt,pptx').split(','),
   },
 
-  redis: {
-    url: process.env.REDIS_URL || '',
-  },
-
   otp: {
     expiryMinutes: parseInt(process.env.OTP_EXPIRY_MINUTES, 10) || 5,
   },

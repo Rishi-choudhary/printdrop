@@ -5,6 +5,7 @@ const { notifyUser, notifyReadyForPickup } = require('../services/notification')
 const messages = require('../bot/messages');
 const { findShopByAgentKey } = require('../services/agent-key');
 const { recomputeOrderStatus } = require('../services/order');
+const { broadcastQueueUpdate } = require('./ws');
 
 const AGENT_JOB_STATUSES = ['queued', 'printing', 'ready'];
 const AGENT_HISTORY_STATUSES = ['picked_up', 'cancelled'];
@@ -120,6 +121,7 @@ async function agentRoutes(fastify) {
       await notifyUser(updated.userId, messages.statusUpdateMessage('printing', updated.token));
     } catch {}
 
+    broadcastQueueUpdate(shop.id);
     return { claimed: true, job: updated };
   });
 
@@ -148,6 +150,7 @@ async function agentRoutes(fastify) {
       await notifyUser(updated.userId, messages.statusUpdateMessage('queued', updated.token));
     } catch {}
 
+    broadcastQueueUpdate(shop.id);
     return { ok: true, job: updated };
   });
 
@@ -199,6 +202,7 @@ async function agentRoutes(fastify) {
         }
       }
 
+      broadcastQueueUpdate(shop.id);
       return updated;
     } catch (err) {
       return reply.status(400).send({ error: err.message });

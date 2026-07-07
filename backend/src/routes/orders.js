@@ -130,17 +130,8 @@ async function orderRoutes(fastify) {
     }
 
     try {
+      // createPaymentLink flips order + child jobs to payment_pending itself
       const payment = await orderService.createOrderPaymentLink(order.id);
-
-      // Flip order to payment_pending
-      await fastify.prisma.order.update({
-        where: { id: order.id },
-        data:  { status: 'payment_pending' },
-      });
-      await fastify.prisma.job.updateMany({
-        where: { orderId: order.id, status: 'pending' },
-        data:  { status: 'payment_pending' },
-      });
 
       return { paymentLink: payment.paymentLink, orderId: order.id };
     } catch (err) {

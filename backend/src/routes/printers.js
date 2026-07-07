@@ -16,9 +16,14 @@ async function printerRoutes(fastify) {
     request.shop = shop;
   }
 
-  // ─── GET /printers/shop/:shopId — list printers for a shop (used by agent) ─
-  fastify.get('/shop/:shopId', async (request, reply) => {
+  // ─── GET /printers/shop/:shopId — list printers for a shop (dashboard) ────
+  fastify.get('/shop/:shopId', {
+    preHandler: [authenticate, requireRole(['shopkeeper', 'admin'])],
+  }, async (request, reply) => {
     const { shopId } = request.params;
+    if (request.user.role === 'shopkeeper' && request.user.shop?.id !== shopId) {
+      return reply.status(403).send({ error: 'Not authorized for this shop' });
+    }
     const printers = await fastify.prisma.shopPrinter.findMany({
       where: { shopId },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
