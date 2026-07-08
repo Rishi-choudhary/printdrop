@@ -182,7 +182,7 @@ Copy `.env.example` to `.env` and fill in:
 ## WhatsApp Setup (Gupshup)
 
 1. Create a Gupshup account and register your WhatsApp number
-2. Set the webhook URL to: `https://agent.printdrop.app/api/webhooks/whatsapp`
+2. Set the webhook URL to: `https://printdrop-api-production.up.railway.app/api/webhooks/whatsapp`
 3. Set the following env vars:
    ```
    WHATSAPP_API_URL=https://api.gupshup.io/wa/api/v1/msg

@@ -2,10 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
-// api.printdrop.app is locked to a different Railway account and can't be
-// reattached; agent.printdrop.app is the custom domain on printdrop-api.
-// (Requires the CNAME agent -> dowxx88t.up.railway.app in DNS.)
-const DEFAULT_API_URL = 'https://agent.printdrop.app';
+// api.printdrop.app is locked to a different Railway account and
+// agent.printdrop.app has no DNS record yet — use the Railway URL directly.
+const DEFAULT_API_URL = 'https://printdrop-api-production.up.railway.app';
 
 const DEFAULTS = {
   version: 2,

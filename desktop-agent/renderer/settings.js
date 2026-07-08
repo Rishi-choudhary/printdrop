@@ -43,10 +43,9 @@ function applyConfig() {
   if (!_config) return;
 
   // Connection — migrate stale/broken API URLs to the live backend.
-  // api.printdrop.app is locked to a different Railway account; the custom
-  // domain on printdrop-api is agent.printdrop.app. Move installs off the
-  // broken api. host onto it.
-  const DEFAULT_API_URL = 'https://agent.printdrop.app';
+  // api.printdrop.app is locked to a different Railway account and
+  // agent.printdrop.app has no DNS record — neither resolves.
+  const DEFAULT_API_URL = 'https://printdrop-api-production.up.railway.app';
   const rawUrl = _config.apiUrl || '';
   const isOldUrl =
     rawUrl.includes('localhost') ||
@@ -54,6 +53,7 @@ function applyConfig() {
     rawUrl === 'https://printdrop.app' ||
     rawUrl === 'https://www.printdrop.app' ||
     rawUrl === 'https://api.printdrop.app' ||
+    rawUrl === 'https://agent.printdrop.app' ||
     rawUrl.includes('render.com');
   const correctedUrl = isOldUrl ? DEFAULT_API_URL : rawUrl || DEFAULT_API_URL;
   document.getElementById('apiUrl').value = correctedUrl;

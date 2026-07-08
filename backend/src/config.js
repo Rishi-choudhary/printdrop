@@ -8,7 +8,7 @@ const config = {
   isDev: (process.env.NODE_ENV || 'development') === 'development',
 
   frontendUrl: process.env.FRONTEND_URL || 'https://printdrop.app',
-  apiUrl: process.env.API_URL || 'https://agent.printdrop.app',
+  apiUrl: process.env.API_URL || 'https://printdrop-api-production.up.railway.app',
 
   jwtSecret: process.env.JWT_SECRET || 'change-this-secret',
 
