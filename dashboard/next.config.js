@@ -2,7 +2,7 @@
 const nextConfig = {
   async rewrites() {
     // API_URL is server-side only (not NEXT_PUBLIC_*), set in Vercel env vars
-    const backend = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'https://api.printdrop.app';
+    const backend = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'https://agent.printdrop.app';
     return [
       {
         source: '/api/:path*',

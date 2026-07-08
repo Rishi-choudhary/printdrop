@@ -42,16 +42,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 function applyConfig() {
   if (!_config) return;
 
-  // Connection — migrate old API URLs to the dedicated API subdomain
+  // Connection — migrate stale/broken API URLs to the live backend.
+  // api.printdrop.app is locked to a different Railway account; the custom
+  // domain on printdrop-api is agent.printdrop.app. Move installs off the
+  // broken api. host onto it.
+  const DEFAULT_API_URL = 'https://agent.printdrop.app';
   const rawUrl = _config.apiUrl || '';
   const isOldUrl =
     rawUrl.includes('localhost') ||
     rawUrl.includes('127.0.0.1') ||
     rawUrl === 'https://printdrop.app' ||
     rawUrl === 'https://www.printdrop.app' ||
-    rawUrl.includes('railway.app') ||
+    rawUrl === 'https://api.printdrop.app' ||
     rawUrl.includes('render.com');
-  const correctedUrl = isOldUrl ? 'https://api.printdrop.app' : rawUrl || 'https://api.printdrop.app';
+  const correctedUrl = isOldUrl ? DEFAULT_API_URL : rawUrl || DEFAULT_API_URL;
   document.getElementById('apiUrl').value = correctedUrl;
   document.getElementById('agentKey').value = _config.agentKey || '';
 
